@@ -1,0 +1,109 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background: #101010;
+  color: #E8E8E8;
+  font-family: Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .display { font-family: Roboto, Arial, sans-serif; font-weight: 900; letter-spacing: -0.01em; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #2E2E2E; border-radius: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+@layer components {
+  .card { @apply bg-ink-700 border border-ink-600 rounded-xl; }
+  /* Gentle hover-lift + soft shadow. */
+  .card-hover {
+    @apply transition-all duration-200 ease-out
+           hover:border-lime/60 hover:-translate-y-0.5
+           hover:shadow-[0_10px_30px_-12px_rgba(0,0,0,0.7)];
+  }
+  .label { @apply text-[11px] uppercase tracking-wider text-white/40 font-medium; }
+  .input {
+    @apply w-full bg-ink-800 border border-ink-500 rounded-lg px-3 py-2 text-sm text-white
+           placeholder:text-white/25 focus:outline-none focus:border-lime transition-all duration-200
+           focus:shadow-[0_0_0_3px_rgba(159,209,80,0.15)];
+  }
+  .btn {
+    @apply relative overflow-hidden inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
+           transition-all duration-150 active:scale-[0.97];
+  }
+  .btn-primary { @apply btn bg-lime text-ink-900 hover:bg-lime-dark; }
+  .btn-ghost { @apply btn border border-ink-500 text-white/70 hover:text-white hover:border-white/40; }
+  .btn-danger { @apply btn bg-flame text-white hover:bg-flame-dark; }
+}
+
+.slash { clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%); }
+
+/* ---- Shimmer buttons ---------------------------------------------------- */
+/* Keep the button label above the sheen layers. */
+.btn > * { position: relative; z-index: 2; }
+
+/* Idle: a faint sheen drifts across occasionally. */
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 42%, rgba(255,255,255,0.16) 50%, transparent 58%);
+  transform: translateX(-160%);
+  animation: btn-idle-shimmer 7s ease-in-out infinite;
+}
+
+/* Hover: a brighter sheen sweeps once. */
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.40) 50%, transparent 70%);
+  transform: translateX(-160%);
+}
+.btn-primary:hover::after { animation: btn-sheen 0.85s ease; }
+
+/* Ghost buttons get a subtler cool-toned sweep on hover only. */
+.btn-ghost::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(159,209,80,0.18) 50%, transparent 65%);
+  transform: translateX(-160%);
+}
+.btn-ghost:hover::after { animation: btn-sheen 0.9s ease; }
+
+@keyframes btn-sheen {
+  from { transform: translateX(-160%); }
+  to   { transform: translateX(160%); }
+}
+@keyframes btn-idle-shimmer {
+  0%        { transform: translateX(-160%); }
+  55%, 100% { transform: translateX(160%); }
+}
+
+/* ---- Soft page-content fade-in ------------------------------------------ */
+.page-fade { animation: page-fade-in 0.5s ease-out both; }
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Respect reduced motion --------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary::before,
+  .btn-primary::after,
+  .btn-ghost::after { animation: none !important; }
+  .card-hover { @apply hover:translate-y-0; }
+  .page-fade { animation: none; }
+}
