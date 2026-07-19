@@ -596,7 +596,6 @@ export default function Admin() {
                               </button>
                             </>
                           )}
-                          {isManco && st === 'active' && false}
                           {isManco && st === 'suspended' && (
                             <>
                               <button className="btn-ghost px-2 py-1 text-[11px] text-lime"
