@@ -1,15 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Ban, Building2, ChevronDown, History, KeyRound, Mail, Network, Plus,
-  RotateCcw, ToggleLeft, ToggleRight, UserCheck,
+  AlertTriangle, Ban, Building2, ChevronDown, Eye, EyeOff, History, KeyRound, Mail, Network, Plus,
+  RotateCcw, ToggleLeft, ToggleRight, Trash2, UserCheck,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
-import { repo } from '../lib/repo'
+import { repo, subscribe } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
-import type { Profile, Role, UserStatus } from '../lib/types'
-import { USER_EVENT_LABEL, USER_STATUS_LABEL } from '../lib/types'
-import { Empty, Field, Modal } from '../components/ui'
+import type { BeneficiaryView, InterventionView, Profile, Role, UserStatus } from '../lib/types'
+import { LIFECYCLE_LABEL, STATUS_LABEL, USER_EVENT_LABEL, USER_STATUS_LABEL } from '../lib/types'
+import { Empty, Field, Modal, RagPill } from '../components/ui'
 import { categoryTint } from '../lib/palette'
 
 // User verticals map 1:1 onto the internal Role. "Client / Aggregator / Sponsor"
@@ -50,7 +50,9 @@ export default function Admin() {
   const { catalogue, people, aggregators, sponsors, userEvents, loading } = useData()
   const { can, live, user } = useAuth()
   const isManco = user?.role === 'manco'
-  const [tab, setTab] = useState<'interventions' | 'programmes' | 'users'>('interventions')
+  // ManCo + Exco can hide / delete records; this is exactly what can('manage') gates (and what the DB allows).
+  const canManage = can('manage')
+  const [tab, setTab] = useState<'interventions' | 'programmes' | 'beneficiaries' | 'users'>('interventions')
   const [addCat, setAddCat] = useState(false)
   const [addUser, setAddUser] = useState(false)
   const [addAgg, setAddAgg] = useState(false)
@@ -65,11 +67,49 @@ export default function Admin() {
   const [activate, setActivate] = useState<Profile | null>(null)
   const [actForm, setActForm] = useState({ password: '', terms: false })
 
+  // Beneficiaries tab: its own fetch that INCLUDES admin-hidden records (so they can be restored / purged).
+  const [adminBens, setAdminBens] = useState<BeneficiaryView[]>([])
+  const [adminIvs, setAdminIvs] = useState<InterventionView[]>([])
+  const [benOpen, setBenOpen] = useState<Record<string, boolean>>({})
+  const [benSearch, setBenSearch] = useState('')
+  // Permanent-delete confirmation (type-to-confirm), for either a beneficiary or an intervention.
+  const [del, setDel] = useState<{ kind: 'beneficiary' | 'intervention'; id: string; name: string; sub?: string } | null>(null)
+  const [delText, setDelText] = useState('')
+
+  useEffect(() => {
+    const load = () => {
+      repo.beneficiariesAdmin().then(setAdminBens).catch(() => setAdminBens([]))
+      repo.interventionsAdmin().then(setAdminIvs).catch(() => setAdminIvs([]))
+    }
+    load()
+    const unsub = subscribe(load)
+    return () => { unsub() }
+  }, [])
+
+  const runDelete = async () => {
+    if (!del) return
+    if (del.kind === 'beneficiary') await repo.deleteBeneficiary(del.id, user?.id ?? null)
+    else await repo.deleteIntervention(del.id, user?.id ?? null)
+    setDel(null); setDelText('')
+  }
+
   const grouped = useMemo(() => {
     const m = new Map<string, typeof catalogue>()
     catalogue.forEach(c => m.set(c.category, [...(m.get(c.category) ?? []), c]))
     return Array.from(m.entries())
   }, [catalogue])
+
+  // Beneficiaries tab: search + hidden-last ordering.
+  const adminBenRows = useMemo(() => {
+    const q = benSearch.trim().toLowerCase()
+    return adminBens
+      .filter(b => !q
+        || b.name.toLowerCase().includes(q)
+        || (b.client_name ?? '').toLowerCase().includes(q)
+        || (b.sponsor_name ?? '').toLowerCase().includes(q))
+      .sort((a, z) =>
+        (Number(Boolean(a.removed_at)) - Number(Boolean(z.removed_at))) || a.name.localeCompare(z.name))
+  }, [adminBens, benSearch])
 
   // Sponsors grouped under their parent aggregator, plus a standalone bucket.
   const sponsorGroups = useMemo(() => {
@@ -138,7 +178,7 @@ export default function Admin() {
       </header>
 
       <div className="flex gap-1 rounded-lg bg-ink-800 p-1">
-        {(['interventions', 'programmes', 'users'] as const).map(t => (
+        {(['interventions', 'programmes', 'beneficiaries', 'users'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
             className={`rounded-md px-4 py-2 text-sm capitalize transition-colors ${
               tab === t ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
@@ -312,6 +352,134 @@ export default function Admin() {
               </div>
             )}
           </motion.section>
+        </>
+      ) : tab === 'beneficiaries' ? (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="max-w-2xl text-xs text-white/35">
+              {live
+                ? 'Hide a beneficiary or a single assigned intervention to take it off every screen (reversible), or delete it permanently. ManCo and Exco only.'
+                : 'Demo mode — changes are in-memory only. Hide, restore, or permanently delete beneficiaries and their assigned interventions.'}
+            </p>
+            <input
+              className="input w-64"
+              placeholder="Search beneficiary or sponsor"
+              value={benSearch}
+              onChange={e => setBenSearch(e.target.value)}
+            />
+          </div>
+
+          {adminBenRows.length === 0 ? (
+            <Empty text={benSearch ? 'No beneficiaries match your search.' : 'No beneficiaries loaded yet.'} />
+          ) : (
+            adminBenRows.map((b, gi) => {
+              const isOpen = !!benOpen[b.id]
+              const ivs = adminIvs.filter(i => i.beneficiary_id === b.id)
+              const removed = Boolean(b.removed_at)
+              return (
+                <motion.section key={b.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(gi * 0.02, 0.2) }} className="card overflow-hidden p-0">
+                  <div className={`flex flex-wrap items-center justify-between gap-3 px-5 py-4 ${removed ? 'opacity-60' : ''}`}>
+                    <button
+                      onClick={() => setBenOpen(o => ({ ...o, [b.id]: !o[b.id] }))}
+                      className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                      <ChevronDown size={18} className="shrink-0 text-white/40 transition-transform"
+                        style={{ transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-sm text-white">{b.name}</span>
+                          {removed && (
+                            <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                              Hidden
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-white/35">
+                          {b.client_name}{b.sponsor_name ? ` · ${b.sponsor_name}` : ''} · {LIFECYCLE_LABEL[b.lifecycle]}
+                          {' · '}{ivs.length} {ivs.length === 1 ? 'intervention' : 'interventions'}
+                        </div>
+                      </div>
+                    </button>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <RagPill rag={b.rag} />
+                      {canManage && (
+                        <>
+                          {removed ? (
+                            <button className="btn-ghost px-2 py-1 text-[11px] text-lime"
+                              onClick={() => repo.setBeneficiaryRemoved(b.id, false, user?.id ?? null)}>
+                              <RotateCcw size={13} /> Restore
+                            </button>
+                          ) : (
+                            <button className="btn-ghost px-2 py-1 text-[11px]"
+                              onClick={() => repo.setBeneficiaryRemoved(b.id, true, user?.id ?? null)}>
+                              <EyeOff size={13} /> Hide
+                            </button>
+                          )}
+                          <button className="btn-ghost px-2 py-1 text-[11px] text-flame"
+                            onClick={() => { setDel({ kind: 'beneficiary', id: b.id, name: b.name, sub: `${ivs.length} intervention${ivs.length === 1 ? '' : 's'} and all history` }); setDelText('') }}>
+                            <Trash2 size={13} /> Delete
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <AnimatePresence initial={false}>
+                    {isOpen && (
+                      <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25 }} className="overflow-hidden">
+                        <div className="space-y-1 border-t border-ink-600 px-3 pb-3 pt-2">
+                          {ivs.length === 0 ? (
+                            <div className="px-3 py-2 text-[12px] text-white/30">No interventions assigned to this beneficiary.</div>
+                          ) : ivs.map(i => {
+                            const ivRemoved = Boolean(i.removed_at)
+                            return (
+                              <div key={i.id}
+                                className={`flex items-center justify-between gap-3 rounded-lg px-3 py-2.5 hover:bg-ink-600/50 ${ivRemoved ? 'opacity-50' : ''}`}>
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="truncate text-sm text-white">{i.title}</span>
+                                    {i.cancelled && (
+                                      <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white/40">cancelled</span>
+                                    )}
+                                    {ivRemoved && (
+                                      <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-white/50">hidden</span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-white/35">
+                                    {i.category} · {i.consultant_name ?? 'unassigned'} · {STATUS_LABEL[i.status]}
+                                  </div>
+                                </div>
+                                {canManage && (
+                                  <div className="flex shrink-0 items-center gap-2">
+                                    {ivRemoved ? (
+                                      <button className="btn-ghost px-2 py-1 text-[11px] text-lime"
+                                        onClick={() => repo.setInterventionRemoved(i.id, false, user?.id ?? null)}>
+                                        <Eye size={13} /> Restore
+                                      </button>
+                                    ) : (
+                                      <button className="btn-ghost px-2 py-1 text-[11px]"
+                                        onClick={() => repo.setInterventionRemoved(i.id, true, user?.id ?? null)}>
+                                        <EyeOff size={13} /> Hide
+                                      </button>
+                                    )}
+                                    <button className="btn-ghost px-2 py-1 text-[11px] text-flame"
+                                      onClick={() => { setDel({ kind: 'intervention', id: i.id, name: i.title, sub: `on ${b.name}` }); setDelText('') }}>
+                                      <Trash2 size={13} /> Delete
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.section>
+              )
+            })
+          )}
         </>
       ) : (
         <>
@@ -680,6 +848,41 @@ export default function Admin() {
             </ol>
           )
         })()}
+      </Modal>
+
+      {/* Permanent-delete confirmation (type-to-confirm) */}
+      <Modal open={!!del} onClose={() => { setDel(null); setDelText('') }} title="Delete permanently">
+        {del && (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 rounded-xl border border-flame/40 bg-flame-soft p-4">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0 text-flame" />
+              <div className="text-sm text-white/80">
+                You're about to permanently delete{' '}
+                {del.kind === 'beneficiary' ? 'the beneficiary' : 'the intervention'}{' '}
+                <span className="text-white">{del.name}</span>{del.sub ? ` — ${del.sub}` : ''}.
+                <div className="mt-1.5 text-[12px] leading-relaxed text-white/50">
+                  This can't be undone.{' '}
+                  {del.kind === 'beneficiary'
+                    ? 'Every intervention, weekly update, communication, escalation and activity-log entry for this beneficiary is deleted too.'
+                    : 'Its weekly updates, communications and escalations are deleted too.'}
+                  {' '}To just take it off the screens instead, cancel and use Hide.
+                </div>
+              </div>
+            </div>
+            <Field label="Type DELETE to confirm">
+              <input className="input" value={delText} autoFocus placeholder="DELETE"
+                onChange={e => setDelText(e.target.value)} />
+            </Field>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => { setDel(null); setDelText('') }}>Cancel</button>
+              <button className="btn-danger disabled:opacity-40"
+                disabled={delText.trim().toUpperCase() !== 'DELETE'}
+                onClick={runDelete}>
+                <Trash2 size={15} /> Delete permanently
+              </button>
+            </div>
+          </div>
+        )}
       </Modal>
     </div>
   )

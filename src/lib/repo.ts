@@ -45,7 +45,7 @@ function decorateIv(i: Intervention): InterventionView {
 }
 
 function decorateBen(b: Beneficiary): BeneficiaryView {
-  const allIvs = db.interventions.filter(i => i.beneficiary_id === b.id).map(decorateIv)
+  const allIvs = db.interventions.filter(i => i.beneficiary_id === b.id && !i.removed_at).map(decorateIv)
   const ivs = allIvs.filter(i => !i.cancelled && (i.cycle ?? 1) === (b.cycle ?? 1))  // current cycle only
   const sponsor = db.sponsors.find(s => s.id === b.sponsor_id)
   const aggregator = db.aggregators.find(a => a.id === sponsor?.aggregator_id)
@@ -180,7 +180,7 @@ function pushBenEvent(benId: string, userId: string | null, kind: BeneficiaryEve
 function sweepBeneficiaryCloseout() {
   db.beneficiaries.forEach(b => {
     if (b.lifecycle !== 'active') return
-    const ivs = db.interventions.filter(i => i.beneficiary_id === b.id && !i.cancelled && (i.cycle ?? 1) === (b.cycle ?? 1))
+    const ivs = db.interventions.filter(i => i.beneficiary_id === b.id && !i.cancelled && !i.removed_at && (i.cycle ?? 1) === (b.cycle ?? 1))
     if (ivs.length === 0) return
     if (!ivs.every(i => i.closeout_status === 'confirmed')) return
     b.lifecycle = 'pending_closeout'
@@ -194,7 +194,7 @@ function sweepBeneficiaryCloseout() {
 // escalation, alert the consultant + owner internally (once) before it escalates to a client.
 function sweepEarlyWarning() {
   db.interventions.forEach(i => {
-    if (i.cancelled || i.status === 'completed' || i.closeout_status === 'requested') return
+    if (i.cancelled || i.removed_at || i.status === 'completed' || i.closeout_status === 'requested') return
     const { rag } = computeRag(i, db.updates, db.escalations)
     if (rag !== 'red') return
     if (db.escalations.some(e => e.intervention_id === i.id && e.status !== 'resolved')) return
@@ -257,14 +257,56 @@ export const repo = {
       supabase!.from('intervention_catalogue').select('*').order('category').order('name') as never)
   },
 
+  // LIVE: the admin soft-hide flag is read from the BASE table, not the RAG view.
+  // The v_*_rag views select b.*/i.*, which Postgres freezes at view-creation, so a
+  // newly-added removed_at column may not surface there. Reading the base table keeps
+  // this correct without forcing a view rebuild. Fails soft (nothing hidden) if the
+  // column isn't there yet (code deployed before the migration ran).
+  async _removedMap(table: 'beneficiaries' | 'interventions'): Promise<Map<string, string>> {
+    if (!LIVE) return new Map()
+    try {
+      const rows = await sb<{ id: string; removed_at: string | null }[]>(() =>
+        supabase!.from(table).select('id, removed_at').not('removed_at', 'is', null) as never)
+      return new Map(rows.filter(r => r.removed_at).map(r => [r.id, r.removed_at as string]))
+    } catch { return new Map() }
+  },
+
   async beneficiaries(): Promise<BeneficiaryView[]> {
+    if (!LIVE) { sweepBeneficiaryCloseout(); sweepEarlyWarning(); return db.beneficiaries.filter(b => !b.removed_at).map(decorateBen) }
+    const [rows, hidden] = await Promise.all([
+      sb<BeneficiaryView[]>(() => supabase!.from('v_beneficiary_rag').select('*').order('name') as never),
+      repo._removedMap('beneficiaries'),
+    ])
+    return rows.filter(b => !hidden.has(b.id))
+  },
+
+  // Admin-only: EVERY beneficiary including admin-hidden ones (so they can be restored / purged).
+  async beneficiariesAdmin(): Promise<BeneficiaryView[]> {
     if (!LIVE) { sweepBeneficiaryCloseout(); sweepEarlyWarning(); return db.beneficiaries.map(decorateBen) }
-    return sb<BeneficiaryView[]>(() => supabase!.from('v_beneficiary_rag').select('*').order('name') as never)
+    const [rows, hidden] = await Promise.all([
+      sb<BeneficiaryView[]>(() => supabase!.from('v_beneficiary_rag').select('*').order('name') as never),
+      repo._removedMap('beneficiaries'),
+    ])
+    return rows.map(b => ({ ...b, removed_at: hidden.get(b.id) ?? null }))
   },
 
   async interventions(): Promise<InterventionView[]> {
+    if (!LIVE) return db.interventions.filter(i => !i.removed_at).map(decorateIv)
+    const [rows, hidden] = await Promise.all([
+      sb<InterventionView[]>(() => supabase!.from('v_intervention_rag').select('*') as never),
+      repo._removedMap('interventions'),
+    ])
+    return rows.filter(i => !hidden.has(i.id))
+  },
+
+  // Admin-only: EVERY intervention including admin-hidden ones.
+  async interventionsAdmin(): Promise<InterventionView[]> {
     if (!LIVE) return db.interventions.map(decorateIv)
-    return sb<InterventionView[]>(() => supabase!.from('v_intervention_rag').select('*') as never)
+    const [rows, hidden] = await Promise.all([
+      sb<InterventionView[]>(() => supabase!.from('v_intervention_rag').select('*') as never),
+      repo._removedMap('interventions'),
+    ])
+    return rows.map(i => ({ ...i, removed_at: hidden.get(i.id) ?? null }))
   },
 
   async updates(): Promise<WeeklyUpdate[]> {
@@ -441,6 +483,50 @@ export const repo = {
     if (iv) pushBenEvent(iv.beneficiary_id, userId, 'intervention_cancelled', repo._ivTitle(iv))
   },
 
+  // ---- admin: hide / restore / permanently delete an assigned intervention ----
+  // Admin soft-hide: the intervention disappears from every screen (and stops
+  // affecting the beneficiary's RAG) but stays in the database and can be restored.
+  async setInterventionRemoved(id: string, removed: boolean, userId: string | null) {
+    const iv = db.interventions.find(i => i.id === id)
+    const title = iv ? repo._ivTitle(iv) : 'Intervention'
+    const patch = { removed_at: removed ? new Date().toISOString() : null, removed_by: removed ? userId : null }
+    const i = db.interventions.findIndex(x => x.id === id)
+    if (i >= 0) db.interventions[i] = { ...db.interventions[i], ...patch }
+    if (iv) pushBenEvent(iv.beneficiary_id, userId, removed ? 'intervention_removed' : 'intervention_restored', title)
+    if (LIVE) {
+      await supabase!.from('interventions').update(patch).eq('id', id)
+      if (iv) await supabase!.from('beneficiary_events').insert({
+        beneficiary_id: iv.beneficiary_id, user_id: userId,
+        kind: removed ? 'intervention_removed' : 'intervention_restored', text: title,
+      })
+    }
+    ping()
+  },
+
+  // Admin hard-delete: permanently removes the intervention and everything that
+  // hangs off it (weekly updates, comms rows, escalations). Mirrors the Postgres
+  // ON DELETE CASCADE so demo and live behave the same.
+  async deleteIntervention(id: string, userId: string | null) {
+    const iv = db.interventions.find(i => i.id === id)
+    const title = iv ? repo._ivTitle(iv) : 'Intervention'
+    if (iv) pushBenEvent(iv.beneficiary_id, userId, 'intervention_deleted', title)
+    if (LIVE) {
+      if (iv) await supabase!.from('beneficiary_events').insert({
+        beneficiary_id: iv.beneficiary_id, user_id: userId, kind: 'intervention_deleted', text: title,
+      })
+      await supabase!.from('interventions').delete().eq('id', id)
+      ping()
+      return
+    }
+    const escIds = db.escalations.filter(e => e.intervention_id === id).map(e => e.id)
+    db.updates = db.updates.filter(u => u.intervention_id !== id)
+    db.comms = db.comms.filter(c => c.intervention_id !== id)
+    db.escalations = db.escalations.filter(e => e.intervention_id !== id)
+    db.events = db.events.filter(ev => !escIds.includes(ev.escalation_id))
+    db.interventions = db.interventions.filter(x => x.id !== id)
+    ping()
+  },
+
   // ---- beneficiary-level close-out chain ----
   _benName(id: string) { return db.beneficiaries.find(b => b.id === id)?.name ?? 'beneficiary' },
   _ivTitle(iv: Intervention) {
@@ -492,6 +578,43 @@ export const repo = {
     b.lifecycle = 'archived'; b.archived_at = new Date().toISOString()
     pushBenEvent(benId, userId, 'archived', 'Archived after month-end extract.')
     if (LIVE) await supabase!.from('beneficiaries').update(b).eq('id', benId)
+    ping()
+  },
+
+  // ---- admin: hide / restore / permanently delete a beneficiary ----
+  // Admin soft-hide: the beneficiary (and its interventions) disappear from every
+  // screen but stay in the database and can be restored.
+  async setBeneficiaryRemoved(benId: string, removed: boolean, userId: string | null) {
+    const patch = { removed_at: removed ? new Date().toISOString() : null, removed_by: removed ? userId : null }
+    const i = db.beneficiaries.findIndex(x => x.id === benId)
+    if (i >= 0) db.beneficiaries[i] = { ...db.beneficiaries[i], ...patch }
+    pushBenEvent(benId, userId, removed ? 'removed' : 'restored',
+      removed ? 'Beneficiary hidden from the app by an admin.' : 'Beneficiary restored by an admin.')
+    if (LIVE) {
+      await supabase!.from('beneficiaries').update(patch).eq('id', benId)
+      await supabase!.from('beneficiary_events').insert({
+        beneficiary_id: benId, user_id: userId, kind: removed ? 'removed' : 'restored',
+        text: removed ? 'Beneficiary hidden from the app by an admin.' : 'Beneficiary restored by an admin.',
+      })
+    }
+    ping()
+  },
+
+  // Admin hard-delete: permanently removes the beneficiary and everything under it
+  // (interventions, weekly updates, comms, escalations, overrides, activity log).
+  // Mirrors the Postgres ON DELETE CASCADE so demo and live behave the same.
+  async deleteBeneficiary(benId: string, _userId: string | null) {
+    if (LIVE) { await supabase!.from('beneficiaries').delete().eq('id', benId); ping(); return }
+    const ivIds = db.interventions.filter(i => i.beneficiary_id === benId).map(i => i.id)
+    const escIds = db.escalations.filter(e => e.beneficiary_id === benId).map(e => e.id)
+    db.updates = db.updates.filter(u => !ivIds.includes(u.intervention_id))
+    db.comms = db.comms.filter(c => c.beneficiary_id !== benId)
+    db.escalations = db.escalations.filter(e => e.beneficiary_id !== benId)
+    db.events = db.events.filter(ev => !escIds.includes(ev.escalation_id))
+    db.overrides = db.overrides.filter(o => o.beneficiary_id !== benId)
+    db.benEvents = db.benEvents.filter(be => be.beneficiary_id !== benId)
+    db.interventions = db.interventions.filter(i => i.beneficiary_id !== benId)
+    db.beneficiaries = db.beneficiaries.filter(b => b.id !== benId)
     ping()
   },
 
