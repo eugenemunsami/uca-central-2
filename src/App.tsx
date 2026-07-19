@@ -1,7 +1,8 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import SetPassword from './pages/SetPassword'
 import Dashboard from './pages/Dashboard'
 import Beneficiaries from './pages/Beneficiaries'
 import BeneficiaryDetail from './pages/BeneficiaryDetail'
@@ -13,7 +14,8 @@ import Portal from './pages/Portal'
 import ClientWork from './pages/ClientWork'
 
 export default function App() {
-  const { user, loading } = useAuth()
+  const { user, loading, recovery } = useAuth()
+  const location = useLocation()
 
   if (loading) {
     return (
@@ -22,6 +24,13 @@ export default function App() {
       </div>
     )
   }
+
+  // The invite / reset link lands on /set-password; also force it for a freshly
+  // invited (pending) account or an active password-recovery session.
+  if (location.pathname === '/set-password' || recovery || (user && user.status === 'pending')) {
+    return <SetPassword />
+  }
+
   if (!user) return <Routes><Route path="*" element={<Login />} /></Routes>
 
   if (user.role === 'external') {

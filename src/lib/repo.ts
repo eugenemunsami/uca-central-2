@@ -222,6 +222,18 @@ async function sb<T>(fn: () => Promise<{ data: T | null; error: unknown }>): Pro
   return (data ?? []) as T
 }
 
+// Pull the human-readable message out of a Supabase Edge Function error response.
+async function readFnError(error: unknown): Promise<string> {
+  try {
+    const ctx = (error as { context?: { json?: () => Promise<{ error?: string }> } })?.context
+    if (ctx && typeof ctx.json === 'function') {
+      const body = await ctx.json()
+      if (body?.error) return String(body.error)
+    }
+  } catch { /* fall through */ }
+  return (error as { message?: string })?.message ?? 'Invite failed'
+}
+
 export const repo = {
   live: LIVE,
 
@@ -845,11 +857,27 @@ export const repo = {
   },
 
   // ---- user lifecycle (ManCo-controlled; real auth + emails wired at go-live) ----
-  // Create + invite a user. Generates a simulated temp password + 72h invite window.
+  // Create + invite a user. In live mode this calls the invite-user edge function.
   async createUser(input: {
     full_name: string; email: string; organisation: string; job_title: string; role: Role
     external_client_id?: string | null; external_sponsor_id?: string | null
   }, byUserId: string | null) {
+    // Live: the invite-user edge function creates the auth user (privileged), sends the
+    // invite email, and inserts the profile. The person sets their password from the email.
+    if (LIVE) {
+      const { data, error } = await supabase!.functions.invoke('invite-user', {
+        body: {
+          email: input.email, full_name: input.full_name, organisation: input.organisation,
+          job_title: input.job_title, role: input.role,
+          external_client_id: input.external_client_id ?? null,
+          external_sponsor_id: input.external_sponsor_id ?? null,
+          redirect_to: `${window.location.origin}/set-password`,
+        },
+      })
+      if (error) throw new Error(await readFnError(error))
+      if (data?.error) throw new Error(String(data.error))
+      return { id: (data?.id as string) ?? '', temp: '' }
+    }
     const id = uid()
     const temp = 'UCA-' + Math.random().toString(36).slice(2, 8).toUpperCase()
     const now = new Date()
@@ -861,7 +889,6 @@ export const repo = {
       external_client_id: input.external_client_id ?? null, external_sponsor_id: input.external_sponsor_id ?? null,
       invited_at: now.toISOString(), invite_expires_at: expires, created_by: byUserId, temp_password: temp,
     } as Profile
-    if (LIVE) { await supabase!.from('profiles').insert(profile); return { id, temp } }
     db.profiles.push(profile)
     pushUserEvent(id, byUserId, 'created', `Invited as ${input.role}.`)
     pushUserEvent(id, byUserId, 'invite_sent', 'Onboarding email sent (expires in 72h).')
@@ -869,7 +896,8 @@ export const repo = {
     return { id, temp }              // returned so the demo can show the placeholder link/password
   },
 
-  // Simulated first-login activation: user sets their own password + accepts terms.
+  // Simulated first-login activation (demo only). In live mode the person activates via
+  // the invite email + set-password screen (see AuthContext.setOwnPassword).
   async activateUser(id: string, _newPassword: string) {
     const pr = db.profiles.find(x => x.id === id); if (!pr) return
     pr.status = 'active'; pr.active = true; pr.temp_password = null
@@ -885,18 +913,36 @@ export const repo = {
     ping()
   },
 
-  async resendInvite(id: string, byUserId: string | null) {
+  async resendInvite(id: string, byUserId: string | null, email?: string) {
+    if (LIVE) {
+      // Re-send a link that lets a still-pending user set their password and sign in.
+      if (email) await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/set-password`,
+      })
+      if (email) await supabase!.from('user_events').insert({
+        target_user_id: id, by_user_id: byUserId, kind: 'invite_resent', text: 'Invitation re-sent.',
+      })
+      return
+    }
     const pr = db.profiles.find(x => x.id === id); if (!pr) return
     pr.status = 'pending'; pr.invited_at = new Date().toISOString()
     pr.invite_expires_at = new Date(Date.now() + 72 * 3600 * 1000).toISOString()
     pr.temp_password = 'UCA-' + Math.random().toString(36).slice(2, 8).toUpperCase()
     pushUserEvent(id, byUserId, 'invite_resent', 'Invitation resent (new 72h window).')
-    if (LIVE) await supabase!.from('profiles').update(pr).eq('id', id)
     ping()
   },
 
-  // ManCo initiates a reset — sends a secure link (48h). ManCo never sees/sets the password.
-  async resetUserPassword(id: string, byUserId: string | null) {
+  // ManCo initiates a reset — Supabase emails the user a secure link. ManCo never sees/sets the password.
+  async resetUserPassword(id: string, byUserId: string | null, email?: string) {
+    if (LIVE) {
+      if (email) await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/set-password`,
+      })
+      if (email) await supabase!.from('user_events').insert({
+        target_user_id: id, by_user_id: byUserId, kind: 'password_reset_sent', text: 'Password reset email sent.',
+      })
+      return
+    }
     pushUserEvent(id, byUserId, 'password_reset_sent', 'Password reset email sent (link expires in 48h).')
     ping()
   },

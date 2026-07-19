@@ -8,9 +8,12 @@ interface AuthCtx {
   loading: boolean
   live: boolean
   people: Profile[]
+  recovery: boolean            // true while a password-reset link session is active
   signInDemo: (id: string) => void
   signIn: (email: string, password: string) => Promise<string | null>
   signOut: () => Promise<void>
+  sendReset: (email: string) => Promise<string | null>
+  setOwnPassword: (password: string, acceptTerms: boolean) => Promise<string | null>
   can: (what: 'manage' | 'admin' | 'internal') => boolean
 }
 
@@ -21,6 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<Profile | null>(null)
   const [people, setPeople] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
+  const [recovery, setRecovery] = useState(false)
 
   useEffect(() => {
     const loadPeople = () => repo.profiles().then(setPeople).catch(() => setPeople([]))
@@ -31,9 +35,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session) await loadProfile(data.session.user.id)
       setLoading(false)
     })
-    const { data: sub } = supabase!.auth.onAuthStateChange(async (_e, session) => {
+    const { data: sub } = supabase!.auth.onAuthStateChange(async (event, session) => {
+      // A reset link (and Supabase's invite link) drops the user into a live session;
+      // flag recovery so the app routes them to set a password instead of straight in.
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
       if (session) await loadProfile(session.user.id)
-      else setUser(null)
+      else { setUser(null); setRecovery(false) }
     })
     return () => { unsubPeople(); sub.subscription.unsubscribe() }
   }, [])
@@ -44,7 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const value: AuthCtx = {
-    user, loading, people, live: LIVE,
+    user, loading, people, live: LIVE, recovery,
     signInDemo: (id) => setUser(people.find(p => p.id === id) ?? null),
     signIn: async (email, password) => {
       const { error } = await supabase!.auth.signInWithPassword({ email, password })
@@ -53,6 +60,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut: async () => {
       if (LIVE) await supabase!.auth.signOut()
       setUser(null)
+      setRecovery(false)
+    },
+    // Email the person a reset link that lands back on /set-password.
+    sendReset: async (email) => {
+      if (!LIVE) return null
+      const { error } = await supabase!.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/set-password`,
+      })
+      return error ? error.message : null
+    },
+    // First login (invite) or reset: set a new password, accept terms, activate the profile.
+    setOwnPassword: async (password, acceptTerms) => {
+      if (!LIVE) return null
+      const { data: sess } = await supabase!.auth.getSession()
+      if (!sess.session) return 'Your link has expired. Ask an admin to re-send the invite, or use "Forgot password".'
+      const { error } = await supabase!.auth.updateUser({ password })
+      if (error) return error.message
+      const id = sess.session.user.id
+      await supabase!.from('profiles').update({
+        status: 'active', active: true, temp_password: null,
+        activated_at: new Date().toISOString(),
+        ...(acceptTerms ? { terms_accepted_at: new Date().toISOString() } : {}),
+      }).eq('id', id)
+      await loadProfile(id)
+      setRecovery(false)
+      return null
     },
     can: (what) => {
       if (!user) return false
