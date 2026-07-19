@@ -60,7 +60,9 @@ export default function Admin() {
   const [open, setOpen] = useState<Record<string, boolean>>({})
   const [cat, setCat] = useState({ category: '', name: '', description: '', est_delivery: '', default_owner_id: '' })
   const [usr, setUsr] = useState({ full_name: '', email: '', organisation: '', job_title: '', role: 'consultant' as Role, programme: '' })
-  const [created, setCreated] = useState<{ name: string; temp: string } | null>(null)
+  const [created, setCreated] = useState<{ name: string; email: string; temp: string } | null>(null)
+  const [createErr, setCreateErr] = useState<string | null>(null)
+  const [creating, setCreating] = useState(false)
   const [agg, setAgg] = useState({ name: '' })
   const [spo, setSpo] = useState({ name: '', aggregator_id: '' })
   const [activityUser, setActivityUser] = useState<Profile | null>(null)
@@ -160,6 +162,7 @@ export default function Admin() {
   const resetUserForm = () => {
     setAddUser(false)
     setCreated(null)
+    setCreateErr(null)
     setUsr({ full_name: '', email: '', organisation: '', job_title: '', role: 'consultant', programme: '' })
   }
 
@@ -574,13 +577,15 @@ export default function Admin() {
                           {isManco && (st === 'pending' || st === 'invitation_expired') && (
                             <>
                               <button className="btn-ghost px-2 py-1 text-[11px]"
-                                onClick={() => repo.resendInvite(p.id, user?.id ?? null)}>
+                                onClick={() => repo.resendInvite(p.id, user?.id ?? null, p.email)}>
                                 <Mail size={13} /> Resend invite
                               </button>
-                              <button className="btn-ghost px-2 py-1 text-[11px]"
-                                onClick={() => { setActivate(p); setActForm({ password: '', terms: false }) }}>
-                                <UserCheck size={13} /> Simulate activation
-                              </button>
+                              {!live && (
+                                <button className="btn-ghost px-2 py-1 text-[11px]"
+                                  onClick={() => { setActivate(p); setActForm({ password: '', terms: false }) }}>
+                                  <UserCheck size={13} /> Simulate activation
+                                </button>
+                              )}
                             </>
                           )}
                           {isManco && st === 'active' && (
@@ -591,7 +596,7 @@ export default function Admin() {
                                 <Ban size={13} /> Suspend
                               </button>
                               <button className="btn-ghost px-2 py-1 text-[11px]"
-                                onClick={() => repo.resetUserPassword(p.id, user?.id ?? null)}>
+                                onClick={() => repo.resetUserPassword(p.id, user?.id ?? null, p.email)}>
                                 <KeyRound size={13} /> Reset password
                               </button>
                             </>
@@ -715,19 +720,26 @@ export default function Admin() {
                 <UserCheck size={16} className="text-lime" />
                 <span className="text-sm text-white">{created.name} was created.</span>
               </div>
-              <div className="mt-3 flex items-center justify-between rounded-lg bg-ink-900/60 px-3 py-2">
-                <span className="label">Simulated temp password</span>
-                <code className="font-mono text-sm text-lime">{created.temp}</code>
-              </div>
+              {live ? (
+                <div className="mt-3 rounded-lg bg-ink-900/60 px-3 py-2 text-[13px] text-white/70">
+                  An invite email was sent to <span className="text-white">{created.email}</span>. They set
+                  their own password from the link on first login.
+                </div>
+              ) : (
+                <div className="mt-3 flex items-center justify-between rounded-lg bg-ink-900/60 px-3 py-2">
+                  <span className="label">Simulated temp password</span>
+                  <code className="font-mono text-sm text-lime">{created.temp}</code>
+                </div>
+              )}
               <div className="mt-3 flex items-center gap-2 text-[11px]">
                 <span className="label">Account status</span>
                 <StatusPill status="pending" />
               </div>
             </div>
             <p className="text-[11px] leading-relaxed text-white/40">
-              In demo mode the onboarding email is simulated. At go-live this sends a real invite
-              that expires in 72h. The account stays <span className="text-amberx">Pending</span> until
-              the user activates it (sets their own password and accepts the terms).
+              {live
+                ? 'The invite link takes them to a page to set their password and accept the terms. The account stays Pending until they do.'
+                : 'In demo mode the onboarding email is simulated. At go-live this sends a real invite. The account stays Pending until the user activates it (sets their own password and accepts the terms).'}
             </p>
             <div className="flex justify-end gap-2">
               <button className="btn-ghost" onClick={() => {
@@ -773,30 +785,40 @@ export default function Admin() {
               </Field>
             )}
             <p className="mb-4 text-[11px] text-white/30">
-              An onboarding invite (simulated in demo) goes out on creation. The account is Pending until activated.
+              {live
+                ? 'An invite email goes out on creation; the person sets their own password on first login. The account is Pending until they do.'
+                : 'An onboarding invite (simulated in demo) goes out on creation. The account is Pending until activated.'}
             </p>
+            {createErr && <div className="mb-3 text-xs text-flame">{createErr}</div>}
             <div className="flex justify-end gap-2">
               <button className="btn-ghost" onClick={resetUserForm}>Cancel</button>
               <button className="btn-primary"
-                disabled={!usr.full_name || !usr.email || !usr.organisation || !usr.job_title}
+                disabled={creating || !usr.full_name || !usr.email || !usr.organisation || !usr.job_title}
                 onClick={async () => {
-                  const prog = usr.role === 'external'
-                    ? parseProg(usr.programme)
-                    : { external_client_id: null, external_sponsor_id: null }
-                  const res = await repo.createUser({
-                    full_name: usr.full_name, email: usr.email, organisation: usr.organisation,
-                    job_title: usr.job_title, role: usr.role, ...prog,
-                  }, user?.id ?? null)
-                  setCreated({ name: usr.full_name, temp: res.temp })
+                  setCreateErr(null); setCreating(true)
+                  try {
+                    const prog = usr.role === 'external'
+                      ? parseProg(usr.programme)
+                      : { external_client_id: null, external_sponsor_id: null }
+                    const res = await repo.createUser({
+                      full_name: usr.full_name, email: usr.email, organisation: usr.organisation,
+                      job_title: usr.job_title, role: usr.role, ...prog,
+                    }, user?.id ?? null)
+                    setCreated({ name: usr.full_name, email: usr.email, temp: res.temp })
+                  } catch (e) {
+                    setCreateErr(e instanceof Error ? e.message : 'Could not create the user.')
+                  } finally {
+                    setCreating(false)
+                  }
                 }}>
-                Create & invite
+                {creating ? 'Sending invite...' : 'Create & invite'}
               </button>
             </div>
           </>
         )}
       </Modal>
 
-      {/* Simulated first-login activation (stands in for the real invite flow) */}
+      {/* Simulated first-login activation (demo only; live users activate via the invite email) */}
       <Modal open={!!activate} onClose={() => setActivate(null)}
         title={`Simulate activation — ${activate?.full_name ?? ''}`}>
         <p className="mb-4 text-[11px] leading-relaxed text-white/40">
