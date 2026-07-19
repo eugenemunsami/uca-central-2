@@ -114,6 +114,8 @@ export interface Beneficiary {
   closeout_return_notes?: string | null
   concluded_at?: string | null
   archived_at?: string | null
+  removed_at?: string | null          // admin soft-hide: hidden app-wide but kept in the database, restorable
+  removed_by?: string | null          // the user account that hid it
   created_at: string
 }
 
@@ -145,7 +147,9 @@ export interface Intervention {
   closeout_email_sent?: boolean            // consultant confirms the close-out email went to the beneficiary
   closeout_email_text?: string | null
   response_extended_until?: string | null  // allowable delay: pauses the red clock until this date
-  cancelled?: boolean                      // soft-cancel (never hard-deleted)
+  cancelled?: boolean                      // soft-cancel (kept, but off the current-cycle board)
+  removed_at?: string | null               // admin soft-hide: hidden app-wide but kept in the database, restorable
+  removed_by?: string | null               // the user account that hid it
   cycle?: number                           // which re-onboard cycle this belongs to
   drive_folder_url?: string | null
   poe_url?: string | null
@@ -274,6 +278,8 @@ export type BenEventKind =
   | 'loaded' | 'reonboarded' | 'edited' | 'intervention_added' | 'intervention_cancelled'
   | 'delay_granted' | 'closeout_requested' | 'closeout_confirmed' | 'closeout_returned'
   | 'closeout_report_sent' | 'concluded' | 'returned_by_client' | 'archived' | 'note'
+  | 'removed' | 'restored'
+  | 'intervention_removed' | 'intervention_restored' | 'intervention_deleted'
 
 export const BEN_EVENT_LABEL: Record<BenEventKind, string> = {
   loaded: 'Beneficiary loaded',
@@ -290,6 +296,11 @@ export const BEN_EVENT_LABEL: Record<BenEventKind, string> = {
   returned_by_client: 'Client returned the close-out',
   archived: 'Archived',
   note: 'Note added',
+  removed: 'Beneficiary hidden by admin',
+  restored: 'Beneficiary restored by admin',
+  intervention_removed: 'Intervention hidden by admin',
+  intervention_restored: 'Intervention restored by admin',
+  intervention_deleted: 'Intervention permanently deleted',
 }
 
 export type UserEventKind =
