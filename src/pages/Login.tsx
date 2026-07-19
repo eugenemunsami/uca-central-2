@@ -208,10 +208,11 @@ function WaveBackground() {
 }
 
 export default function Login() {
-  const { live, people, signInDemo, signIn } = useAuth()
+  const { live, people, signInDemo, signIn, sendReset } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // Skip straight to the login when reduced-motion is requested.
   const [stage, setStage] = useState<'intro' | 'login'>(() => (prefersReduced() ? 'login' : 'intro'))
@@ -274,6 +275,18 @@ export default function Login() {
               <button className="btn-primary w-full justify-center" disabled={busy}>
                 {busy ? 'Signing in...' : 'Sign in'}
               </button>
+              <div className="mt-3">
+                <button type="button" className="text-xs text-white/40 hover:text-white"
+                  onClick={async () => {
+                    setResetMsg(null)
+                    if (!email) { setResetMsg('Enter your email above first.'); return }
+                    const err = await sendReset(email)
+                    setResetMsg(err ?? 'If that email has an account, a reset link is on its way.')
+                  }}>
+                  Forgot password?
+                </button>
+                {resetMsg && <div className="mt-2 text-xs text-white/50">{resetMsg}</div>}
+              </div>
             </form>
           ) : (
             <div className="mt-6 space-y-5">
