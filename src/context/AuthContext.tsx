@@ -13,6 +13,8 @@ interface AuthCtx {
   signIn: (email: string, password: string) => Promise<string | null>
   signOut: () => Promise<void>
   sendReset: (email: string) => Promise<string | null>
+  sendCode: (email: string) => Promise<string | null>
+  verifyCode: (email: string, code: string) => Promise<string | null>
   setOwnPassword: (password: string, acceptTerms: boolean) => Promise<string | null>
   can: (what: 'manage' | 'admin' | 'internal') => boolean
 }
@@ -67,6 +69,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!LIVE) return null
       const { error } = await supabase!.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/set-password`,
+      })
+      return error ? error.message : null
+    },
+    // Email the person a 6-digit sign-in code (no link — safe from email
+    // link-scanners like Barracuda, which pre-click and burn one-time links).
+    // Reuses the recovery/reset email, whose template shows {{ .Token }}.
+    sendCode: async (email) => {
+      if (!LIVE) return null
+      const { error } = await supabase!.auth.resetPasswordForEmail(email)
+      return error ? error.message : null
+    },
+    // Verify the emailed code. On success Supabase opens a recovery session and
+    // onAuthStateChange routes the person to the set-password screen.
+    verifyCode: async (email, code) => {
+      if (!LIVE) return null
+      const { error } = await supabase!.auth.verifyOtp({
+        email, token: code.trim(), type: 'recovery',
       })
       return error ? error.message : null
     },
