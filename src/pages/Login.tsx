@@ -208,12 +208,15 @@ function WaveBackground() {
 }
 
 export default function Login() {
-  const { live, people, signInDemo, signIn, sendReset } = useAuth()
+  const { live, people, signInDemo, signIn, sendCode, verifyCode } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [resetMsg, setResetMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [mode, setMode] = useState<'signin' | 'code'>('signin')
+  const [codeSent, setCodeSent] = useState(false)
+  const [code, setCode] = useState('')
+  const [codeMsg, setCodeMsg] = useState<string | null>(null)
   // Skip straight to the login when reduced-motion is requested.
   const [stage, setStage] = useState<'intro' | 'login'>(() => (prefersReduced() ? 'login' : 'intro'))
   const finishIntro = useCallback(() => setStage('login'), [])
@@ -258,36 +261,93 @@ export default function Login() {
           </p>
 
           {live ? (
-            <form
-              className="mt-6 max-w-md"
-              onSubmit={async e => {
-                e.preventDefault()
-                setBusy(true)
-                setError(await signIn(email, password))
-                setBusy(false)
-              }}
-            >
-              <input className="input mb-3" type="email" placeholder="you@uca.co.za"
-                value={email} onChange={e => setEmail(e.target.value)} required />
-              <input className="input mb-4" type="password" placeholder="Password"
-                value={password} onChange={e => setPassword(e.target.value)} required />
-              {error && <div className="mb-3 text-xs text-flame">{error}</div>}
-              <button className="btn-primary w-full justify-center" disabled={busy}>
-                {busy ? 'Signing in...' : 'Sign in'}
-              </button>
-              <div className="mt-3">
-                <button type="button" className="text-xs text-white/40 hover:text-white"
-                  onClick={async () => {
-                    setResetMsg(null)
-                    if (!email) { setResetMsg('Enter your email above first.'); return }
-                    const err = await sendReset(email)
-                    setResetMsg(err ?? 'If that email has an account, a reset link is on its way.')
-                  }}>
-                  Forgot password?
-                </button>
-                {resetMsg && <div className="mt-2 text-xs text-white/50">{resetMsg}</div>}
-              </div>
-            </form>
+            <div className="mt-6 max-w-md">
+              {mode === 'signin' ? (
+                <form
+                  onSubmit={async e => {
+                    e.preventDefault()
+                    setBusy(true)
+                    setError(await signIn(email, password))
+                    setBusy(false)
+                  }}
+                >
+                  <input className="input mb-3" type="email" placeholder="you@uca.africa"
+                    value={email} onChange={e => setEmail(e.target.value)} required />
+                  <input className="input mb-4" type="password" placeholder="Password"
+                    value={password} onChange={e => setPassword(e.target.value)} required />
+                  {error && <div className="mb-3 text-xs text-flame">{error}</div>}
+                  <button className="btn-primary w-full justify-center" disabled={busy}>
+                    {busy ? 'Signing in...' : 'Sign in'}
+                  </button>
+                  <div className="mt-3">
+                    <button type="button" className="text-xs text-white/40 hover:text-white"
+                      onClick={() => { setMode('code'); setCodeSent(false); setCode(''); setCodeMsg(null) }}>
+                      First time here, or forgot your password?
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div>
+                  <div className="label mb-2">Sign in with a code</div>
+                  <p className="mb-3 text-xs text-white/40">
+                    We’ll email you a 6-digit code — there’s no link to click, so it works even with strict company email security. Use it to set your password.
+                  </p>
+                  <input className="input mb-3" type="email" placeholder="you@uca.africa"
+                    value={email} onChange={e => setEmail(e.target.value)} required />
+
+                  {!codeSent ? (
+                    <button type="button" className="btn-primary w-full justify-center" disabled={busy}
+                      onClick={async () => {
+                        setCodeMsg(null)
+                        if (!email) { setCodeMsg('Enter your email first.'); return }
+                        setBusy(true)
+                        const err = await sendCode(email)
+                        setBusy(false)
+                        if (err) { setCodeMsg(err); return }
+                        setCodeSent(true)
+                        setCodeMsg('Code sent. Check your email (and spam) for a 6-digit code.')
+                      }}>
+                      {busy ? 'Sending...' : 'Email me a code'}
+                    </button>
+                  ) : (
+                    <form
+                      onSubmit={async e => {
+                        e.preventDefault()
+                        setCodeMsg(null)
+                        setBusy(true)
+                        const err = await verifyCode(email, code)
+                        setBusy(false)
+                        if (err) setCodeMsg('That code didn’t work — it may be mistyped or expired. Try “Resend code”.')
+                      }}
+                    >
+                      <input className="input mb-3 text-center tracking-[0.5em]" inputMode="numeric"
+                        autoComplete="one-time-code" maxLength={6} placeholder="––––––"
+                        value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} required />
+                      <button className="btn-primary w-full justify-center" disabled={busy || code.length < 6}>
+                        {busy ? 'Verifying...' : 'Verify & continue'}
+                      </button>
+                      <div className="mt-3">
+                        <button type="button" className="text-xs text-white/40 hover:text-white"
+                          onClick={async () => {
+                            setCodeMsg(null); setBusy(true)
+                            const err = await sendCode(email); setBusy(false)
+                            setCodeMsg(err ?? 'A new code is on its way.')
+                          }}>
+                          Resend code
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {codeMsg && <div className="mt-2 text-xs text-white/50">{codeMsg}</div>}
+
+                  <button type="button" className="mt-4 text-xs text-white/40 hover:text-white"
+                    onClick={() => { setMode('signin'); setCodeMsg(null) }}>
+                    Back to sign in
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <div className="mt-6 space-y-5">
               {groups.map(g => (
