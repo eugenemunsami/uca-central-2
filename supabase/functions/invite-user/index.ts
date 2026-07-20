@@ -64,15 +64,19 @@ Deno.serve(async (req: Request) => {
       createdBy = caller.id
     }
 
-    // Create the auth user and send the invite email.
-    const { data: invited, error: invErr } = await admin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: redirect_to,
-      data: { full_name },
+    // Create the auth user WITHOUT sending a magic-link email. Onboarding uses a
+    // 6-digit code (emailed below) instead of a click-link, so email security
+    // that pre-fetches links (e.g. Barracuda) can't consume a one-time link
+    // before the person uses it. email_confirm:true marks the address verified.
+    const { data: created, error: cuErr } = await admin.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { full_name },
     })
-    if (invErr || !invited?.user) {
-      return json({ error: invErr?.message || 'Invite failed' }, 400)
+    if (cuErr || !created?.user) {
+      return json({ error: cuErr?.message || 'Could not create user' }, 400)
     }
-    const uid = invited.user.id
+    const uid = created.user.id
 
     const { error: pErr } = await admin.from('profiles').insert({
       id: uid,
@@ -96,12 +100,25 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Profile insert failed: ' + pErr.message }, 400)
     }
 
+    // Email them their first sign-in code. resetPasswordForEmail sends the
+    // "Reset password" email, whose template shows {{ .Token }} (a 6-digit code)
+    // through the project's configured SMTP. No link for scanners to burn.
+    let codeSent = true
+    try {
+      const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
+      const pub = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } })
+      const { error: rErr } = await pub.auth.resetPasswordForEmail(email)
+      if (rErr) codeSent = false
+    } catch (_e) {
+      codeSent = false
+    }
+
     await admin.from('user_events').insert([
-      { target_user_id: uid, by_user_id: createdBy, kind: 'created', text: `Invited as ${role}.` },
-      { target_user_id: uid, by_user_id: createdBy, kind: 'invite_sent', text: 'Onboarding email sent.' },
+      { target_user_id: uid, by_user_id: createdBy, kind: 'created', text: `Added as ${role}.` },
+      { target_user_id: uid, by_user_id: createdBy, kind: 'invite_sent', text: codeSent ? 'Sign-in code emailed.' : 'Created — code email pending.' },
     ])
 
-    return json({ id: uid, bootstrap })
+    return json({ id: uid, bootstrap, codeSent })
   } catch (e) {
     return json({ error: String((e as Error)?.message ?? e) }, 500)
   }
