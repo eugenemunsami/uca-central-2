@@ -238,6 +238,15 @@ export const repo = {
   live: LIVE,
 
   async profiles(): Promise<Profile[]> {
+    if (!LIVE) { sweepInviteExpiry(); return db.profiles.filter(p => !p.removed_at) }
+    const rows = await sb<Profile[]>(() => supabase!.from('profiles').select('*').order('full_name') as never)
+    // Admin-hidden users are kept in the DB but must not appear anywhere in the app.
+    // Fails soft (nothing hidden) if the removed_at column isn't there yet.
+    return rows.filter(p => !p.removed_at)
+  },
+
+  // Admin-only: EVERY user including admin-hidden ones (so they can be restored / deleted).
+  async profilesAdmin(): Promise<Profile[]> {
     if (!LIVE) { sweepInviteExpiry(); return [...db.profiles] }
     return sb<Profile[]>(() => supabase!.from('profiles').select('*').order('full_name') as never)
   },
@@ -845,6 +854,7 @@ export const repo = {
   async saveProfile(p: Partial<Profile>) {
     if (LIVE) {
       if (p.id) await supabase!.from('profiles').update(p).eq('id', p.id)
+      ping()
       return
     }
     if (p.id) {
@@ -857,7 +867,7 @@ export const repo = {
   },
 
   // ---- user lifecycle (ManCo-controlled; real auth + emails wired at go-live) ----
-  // Create + invite a user. In live mode this calls the invite-user edge function.
+  // Create + invite a user. Generates a simulated temp password + 72h invite window.
   async createUser(input: {
     full_name: string; email: string; organisation: string; job_title: string; role: Role
     external_client_id?: string | null; external_sponsor_id?: string | null
@@ -896,8 +906,7 @@ export const repo = {
     return { id, temp }              // returned so the demo can show the placeholder link/password
   },
 
-  // Simulated first-login activation (demo only). In live mode the person activates via
-  // the invite email + set-password screen (see AuthContext.setOwnPassword).
+  // Simulated first-login activation: user sets their own password + accepts terms.
   async activateUser(id: string, _newPassword: string) {
     const pr = db.profiles.find(x => x.id === id); if (!pr) return
     pr.status = 'active'; pr.active = true; pr.temp_password = null
@@ -947,21 +956,68 @@ export const repo = {
     ping()
   },
 
+  // Suspend / deactivate / reactivate. Works in live mode regardless of whether the
+  // user happens to be in the in-memory demo list (they aren't, live), so the change
+  // actually persists and the UI reflects it.
   async setUserStatus(id: string, status: UserStatus, byUserId: string | null) {
-    const pr = db.profiles.find(x => x.id === id); if (!pr) return
-    pr.status = status
-    pr.active = status === 'active'
+    const active = status === 'active'
     const kind = status === 'suspended' ? 'suspended' : status === 'deactivated' ? 'deactivated' : 'reactivated'
-    pushUserEvent(id, byUserId, kind as UserEvent['kind'])
-    if (LIVE) await supabase!.from('profiles').update({ status, active: pr.active }).eq('id', id)
+    const i = db.profiles.findIndex(x => x.id === id)
+    if (i >= 0) db.profiles[i] = { ...db.profiles[i], status, active }
+    if (LIVE) {
+      await supabase!.from('profiles').update({ status, active }).eq('id', id)
+      await supabase!.from('user_events').insert({ target_user_id: id, by_user_id: byUserId, kind })
+    } else {
+      pushUserEvent(id, byUserId, kind as UserEvent['kind'])
+    }
+    ping()
+  },
+
+  // ---- admin: hide / restore / permanently delete a user profile ----
+  // Admin soft-hide: the user disappears everywhere in the app (login, assignment
+  // dropdowns, lists) but stays in the database and can be restored.
+  async setUserRemoved(id: string, removed: boolean, byUserId: string | null) {
+    const patch = { removed_at: removed ? new Date().toISOString() : null, removed_by: removed ? byUserId : null }
+    const i = db.profiles.findIndex(x => x.id === id)
+    if (i >= 0) db.profiles[i] = { ...db.profiles[i], ...patch }
+    if (LIVE) {
+      await supabase!.from('profiles').update(patch).eq('id', id)
+      await supabase!.from('user_events').insert({ target_user_id: id, by_user_id: byUserId, kind: removed ? 'removed' : 'restored' })
+    } else {
+      pushUserEvent(id, byUserId, removed ? 'removed' : 'restored')
+    }
+    ping()
+  },
+
+  // Admin hard-delete: permanently removes the user's login + profile everywhere.
+  // Live: a privileged edge function deletes the auth user (which cascades the
+  // profile, their events and notifications); references elsewhere are set null.
+  async deleteUser(id: string, _byUserId: string | null) {
+    if (LIVE) {
+      const { data, error } = await supabase!.functions.invoke('delete-user', { body: { id } })
+      if (error) throw new Error(await readFnError(error))
+      if (data?.error) throw new Error(String(data.error))
+      ping()
+      return
+    }
+    db.interventions.forEach(iv => { if (iv.consultant_id === id) iv.consultant_id = null })
+    db.beneficiaries.forEach(b => { if (b.project_manager_id === id) b.project_manager_id = null })
+    db.userEvents = db.userEvents.filter(e => e.target_user_id !== id)
+    db.notifications = db.notifications.filter(n => n.user_id !== id)
+    db.profiles = db.profiles.filter(p => p.id !== id)
     ping()
   },
 
   async changeUserRole(id: string, role: Role, byUserId: string | null) {
-    const pr = db.profiles.find(x => x.id === id); if (!pr) return
-    const prev = pr.role; pr.role = role
-    pushUserEvent(id, byUserId, 'role_changed', `Role changed from ${prev} to ${role}.`)
-    if (LIVE) await supabase!.from('profiles').update({ role }).eq('id', id)
+    const i = db.profiles.findIndex(x => x.id === id)
+    const prev = i >= 0 ? db.profiles[i].role : null
+    if (i >= 0) db.profiles[i] = { ...db.profiles[i], role }
+    if (LIVE) {
+      await supabase!.from('profiles').update({ role }).eq('id', id)
+      await supabase!.from('user_events').insert({ target_user_id: id, by_user_id: byUserId, kind: 'role_changed', text: `Role changed to ${role}.` })
+    } else {
+      pushUserEvent(id, byUserId, 'role_changed', `Role changed from ${prev} to ${role}.`)
+    }
     ping()
   },
 }

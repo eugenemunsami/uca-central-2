@@ -72,16 +72,19 @@ export default function Admin() {
   // Beneficiaries tab: its own fetch that INCLUDES admin-hidden records (so they can be restored / purged).
   const [adminBens, setAdminBens] = useState<BeneficiaryView[]>([])
   const [adminIvs, setAdminIvs] = useState<InterventionView[]>([])
+  // Users tab: its own fetch that INCLUDES admin-hidden users (so they can be restored / deleted).
+  const [adminUsers, setAdminUsers] = useState<Profile[]>([])
   const [benOpen, setBenOpen] = useState<Record<string, boolean>>({})
   const [benSearch, setBenSearch] = useState('')
   // Permanent-delete confirmation (type-to-confirm), for either a beneficiary or an intervention.
-  const [del, setDel] = useState<{ kind: 'beneficiary' | 'intervention'; id: string; name: string; sub?: string } | null>(null)
+  const [del, setDel] = useState<{ kind: 'beneficiary' | 'intervention' | 'user'; id: string; name: string; sub?: string } | null>(null)
   const [delText, setDelText] = useState('')
 
   useEffect(() => {
     const load = () => {
       repo.beneficiariesAdmin().then(setAdminBens).catch(() => setAdminBens([]))
       repo.interventionsAdmin().then(setAdminIvs).catch(() => setAdminIvs([]))
+      repo.profilesAdmin().then(setAdminUsers).catch(() => setAdminUsers([]))
     }
     load()
     const unsub = subscribe(load)
@@ -91,6 +94,7 @@ export default function Admin() {
   const runDelete = async () => {
     if (!del) return
     if (del.kind === 'beneficiary') await repo.deleteBeneficiary(del.id, user?.id ?? null)
+    else if (del.kind === 'user') await repo.deleteUser(del.id, user?.id ?? null)
     else await repo.deleteIntervention(del.id, user?.id ?? null)
     setDel(null); setDelText('')
   }
@@ -514,13 +518,15 @@ export default function Admin() {
                 </tr>
               </thead>
               <tbody>
-                {people.map(p => {
+                {adminUsers.map(p => {
                   const st = (p.status ?? 'active') as UserStatus
                   const isSelf = p.id === user?.id
+                  const removed = Boolean(p.removed_at)
                   return (
-                    <tr key={p.id} className="border-b border-ink-600/60 last:border-0 hover:bg-ink-600/40 align-top">
+                    <tr key={p.id} className={`border-b border-ink-600/60 last:border-0 hover:bg-ink-600/40 align-top ${removed ? 'opacity-50' : ''}`}>
                       <td className="p-4 text-white">
                         {p.full_name}
+                        {removed && <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">Hidden</span>}
                         {p.job_title && <div className="text-[11px] text-white/35">{p.job_title}</div>}
                       </td>
                       <td className="p-4 text-white/50">{p.email}</td>
@@ -574,7 +580,7 @@ export default function Admin() {
                             onClick={() => setActivityUser(p)}>
                             <History size={13} /> Activity
                           </button>
-                          {isManco && (st === 'pending' || st === 'invitation_expired') && (
+                          {isManco && !removed && (st === 'pending' || st === 'invitation_expired') && (
                             <>
                               <button className="btn-ghost px-2 py-1 text-[11px]"
                                 onClick={() => repo.resendInvite(p.id, user?.id ?? null, p.email)}>
@@ -588,7 +594,7 @@ export default function Admin() {
                               )}
                             </>
                           )}
-                          {isManco && st === 'active' && (
+                          {isManco && !removed && st === 'active' && (
                             <>
                               <button className="btn-ghost px-2 py-1 text-[11px] text-amberx"
                                 disabled={isSelf}
@@ -601,7 +607,7 @@ export default function Admin() {
                               </button>
                             </>
                           )}
-                          {isManco && st === 'suspended' && (
+                          {isManco && !removed && st === 'suspended' && (
                             <>
                               <button className="btn-ghost px-2 py-1 text-[11px] text-lime"
                                 onClick={() => repo.setUserStatus(p.id, 'active', user?.id ?? null)}>
@@ -613,10 +619,30 @@ export default function Admin() {
                               </button>
                             </>
                           )}
-                          {isManco && st === 'deactivated' && (
+                          {isManco && !removed && st === 'deactivated' && (
                             <button className="btn-ghost px-2 py-1 text-[11px] text-lime"
                               onClick={() => repo.setUserStatus(p.id, 'active', user?.id ?? null)}>
                               <RotateCcw size={13} /> Reactivate
+                            </button>
+                          )}
+                          {isManco && !isSelf && !removed && (
+                            <button className="btn-ghost px-2 py-1 text-[11px] text-white/60"
+                              title="Hide this user everywhere in the app (restorable)"
+                              onClick={() => repo.setUserRemoved(p.id, true, user?.id ?? null)}>
+                              <EyeOff size={13} /> Hide
+                            </button>
+                          )}
+                          {isManco && removed && (
+                            <button className="btn-ghost px-2 py-1 text-[11px] text-lime"
+                              onClick={() => repo.setUserRemoved(p.id, false, user?.id ?? null)}>
+                              <Eye size={13} /> Restore
+                            </button>
+                          )}
+                          {isManco && !isSelf && (
+                            <button className="btn-ghost px-2 py-1 text-[11px] text-flame"
+                              title="Permanently delete this user"
+                              onClick={() => setDel({ kind: 'user', id: p.id, name: p.full_name, sub: p.email })}>
+                              <Trash2 size={13} /> Delete
                             </button>
                           )}
                         </div>
@@ -722,8 +748,9 @@ export default function Admin() {
               </div>
               {live ? (
                 <div className="mt-3 rounded-lg bg-ink-900/60 px-3 py-2 text-[13px] text-white/70">
-                  An invite email was sent to <span className="text-white">{created.email}</span>. They set
-                  their own password from the link on first login.
+                  A 6-digit sign-in code was emailed to <span className="text-white">{created.email}</span>. They
+                  open the app, choose “First time here, or forgot your password?”, enter the code, and set their
+                  own password.
                 </div>
               ) : (
                 <div className="mt-3 flex items-center justify-between rounded-lg bg-ink-900/60 px-3 py-2">
@@ -738,7 +765,7 @@ export default function Admin() {
             </div>
             <p className="text-[11px] leading-relaxed text-white/40">
               {live
-                ? 'The invite link takes them to a page to set their password and accept the terms. The account stays Pending until they do.'
+                ? 'The code lets them set their password and accept the terms — no link to click, so it works even with strict email security. The account stays Pending until they do.'
                 : 'In demo mode the onboarding email is simulated. At go-live this sends a real invite. The account stays Pending until the user activates it (sets their own password and accepts the terms).'}
             </p>
             <div className="flex justify-end gap-2">
@@ -786,7 +813,7 @@ export default function Admin() {
             )}
             <p className="mb-4 text-[11px] text-white/30">
               {live
-                ? 'An invite email goes out on creation; the person sets their own password on first login. The account is Pending until they do.'
+                ? 'A 6-digit sign-in code is emailed on creation; the person enters it on the app (“First time here, or forgot your password?”) to set their own password. The account is Pending until they do.'
                 : 'An onboarding invite (simulated in demo) goes out on creation. The account is Pending until activated.'}
             </p>
             {createErr && <div className="mb-3 text-xs text-flame">{createErr}</div>}
@@ -818,7 +845,7 @@ export default function Admin() {
         )}
       </Modal>
 
-      {/* Simulated first-login activation (demo only; live users activate via the invite email) */}
+      {/* Simulated first-login activation (stands in for the real invite flow) */}
       <Modal open={!!activate} onClose={() => setActivate(null)}
         title={`Simulate activation — ${activate?.full_name ?? ''}`}>
         <p className="mb-4 text-[11px] leading-relaxed text-white/40">
@@ -880,12 +907,14 @@ export default function Admin() {
               <AlertTriangle size={18} className="mt-0.5 shrink-0 text-flame" />
               <div className="text-sm text-white/80">
                 You're about to permanently delete{' '}
-                {del.kind === 'beneficiary' ? 'the beneficiary' : 'the intervention'}{' '}
+                {del.kind === 'beneficiary' ? 'the beneficiary' : del.kind === 'user' ? 'the user' : 'the intervention'}{' '}
                 <span className="text-white">{del.name}</span>{del.sub ? ` — ${del.sub}` : ''}.
                 <div className="mt-1.5 text-[12px] leading-relaxed text-white/50">
                   This can't be undone.{' '}
                   {del.kind === 'beneficiary'
                     ? 'Every intervention, weekly update, communication, escalation and activity-log entry for this beneficiary is deleted too.'
+                    : del.kind === 'user'
+                    ? 'Their login and profile are removed, and they are unassigned from any interventions or beneficiaries they owned.'
                     : 'Its weekly updates, communications and escalations are deleted too.'}
                   {' '}To just take it off the screens instead, cancel and use Hide.
                 </div>

@@ -43,6 +43,8 @@ export interface Profile {
   created_by?: string | null
   temp_password?: string | null            // simulated in demo; real auth handles this at go-live
   terms_accepted_at?: string | null
+  removed_at?: string | null               // admin soft-hide: hidden app-wide but kept in the database, restorable
+  removed_by?: string | null
 }
 
 // Org structure: an Aggregator (e.g. BEE123) sits on top and can have many
@@ -306,12 +308,14 @@ export const BEN_EVENT_LABEL: Record<BenEventKind, string> = {
 export type UserEventKind =
   | 'created' | 'invite_sent' | 'invite_resent' | 'activated' | 'password_reset_sent'
   | 'role_changed' | 'suspended' | 'reactivated' | 'deactivated' | 'invite_expired'
+  | 'removed' | 'restored' | 'deleted'
 
 export const USER_EVENT_LABEL: Record<UserEventKind, string> = {
   created: 'User created', invite_sent: 'Invitation sent', invite_resent: 'Invitation resent',
   activated: 'Account activated', password_reset_sent: 'Password reset sent',
   role_changed: 'Role / access changed', suspended: 'Suspended', reactivated: 'Reactivated',
   deactivated: 'Deactivated', invite_expired: 'Invitation expired',
+  removed: 'Hidden by an admin', restored: 'Restored by an admin', deleted: 'Deleted by an admin',
 }
 
 export interface UserEvent {
