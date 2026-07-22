@@ -221,6 +221,23 @@ export default function Login() {
   const [stage, setStage] = useState<'intro' | 'login'>(() => (prefersReduced() ? 'login' : 'intro'))
   const finishIntro = useCallback(() => setStage('login'), [])
 
+  // Onboarding / reset deep-link: the email links here with ?email=... so the
+  // person lands straight on the code entry (not the password box) with their
+  // address pre-filled — they just type the code from that same email. The URL
+  // carries no auth token, so email link-scanners have nothing to consume.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const em = params.get('email')
+    if (em) {
+      setEmail(em)
+      setMode('code')
+      setCodeSent(true)
+      setStage('login')
+      setCodeMsg('Enter the code from your email below to set your password.')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
   // Demo: show EVERY account, grouped by role, so every perspective is testable.
   const groups = useMemo(() => ROLE_ORDER.map(role => ({
     role,
