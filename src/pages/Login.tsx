@@ -290,7 +290,7 @@ export default function Login() {
                 <div>
                   <div className="label mb-2">Sign in with a code</div>
                   <p className="mb-3 text-xs text-white/40">
-                    We’ll email you a 6-digit code — there’s no link to click, so it works even with strict company email security. Use it to set your password.
+                    We’ll email you a code — there’s no link to click, so it works even with strict company email security. Use it to set your password.
                   </p>
                   <input className="input mb-3" type="email" placeholder="you@uca.africa"
                     value={email} onChange={e => setEmail(e.target.value)} required />
@@ -305,7 +305,7 @@ export default function Login() {
                         setBusy(false)
                         if (err) { setCodeMsg(err); return }
                         setCodeSent(true)
-                        setCodeMsg('Code sent. Check your email (and spam) for a 6-digit code.')
+                        setCodeMsg('Code sent. Check your email (and spam) for the code.')
                       }}>
                       {busy ? 'Sending...' : 'Email me a code'}
                     </button>
@@ -320,9 +320,9 @@ export default function Login() {
                         if (err) setCodeMsg('That code didn’t work — it may be mistyped or expired. Try “Resend code”.')
                       }}
                     >
-                      <input className="input mb-3 text-center tracking-[0.5em]" inputMode="numeric"
-                        autoComplete="one-time-code" maxLength={6} placeholder="––––––"
-                        value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} required />
+                      <input className="input mb-3 text-center tracking-[0.35em]" inputMode="numeric"
+                        autoComplete="one-time-code" maxLength={12} placeholder="Enter the code"
+                        value={code} onChange={e => setCode(e.target.value.replace(/\s+/g, ''))} required />
                       <button className="btn-primary w-full justify-center" disabled={busy || code.length < 6}>
                         {busy ? 'Verifying...' : 'Verify & continue'}
                       </button>
