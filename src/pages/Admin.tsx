@@ -77,8 +77,9 @@ export default function Admin() {
   const [benOpen, setBenOpen] = useState<Record<string, boolean>>({})
   const [benSearch, setBenSearch] = useState('')
   // Permanent-delete confirmation (type-to-confirm), for either a beneficiary or an intervention.
-  const [del, setDel] = useState<{ kind: 'beneficiary' | 'intervention' | 'user'; id: string; name: string; sub?: string } | null>(null)
+  const [del, setDel] = useState<{ kind: 'beneficiary' | 'intervention' | 'user' | 'catalogue'; id: string; name: string; sub?: string } | null>(null)
   const [delText, setDelText] = useState('')
+  const [delErr, setDelErr] = useState<string | null>(null)
 
   useEffect(() => {
     const load = () => {
@@ -93,10 +94,16 @@ export default function Admin() {
 
   const runDelete = async () => {
     if (!del) return
-    if (del.kind === 'beneficiary') await repo.deleteBeneficiary(del.id, user?.id ?? null)
-    else if (del.kind === 'user') await repo.deleteUser(del.id, user?.id ?? null)
-    else await repo.deleteIntervention(del.id, user?.id ?? null)
-    setDel(null); setDelText('')
+    try {
+      if (del.kind === 'beneficiary') await repo.deleteBeneficiary(del.id, user?.id ?? null)
+      else if (del.kind === 'user') await repo.deleteUser(del.id, user?.id ?? null)
+      else if (del.kind === 'catalogue') await repo.deleteCatalogueItem(del.id)
+      else await repo.deleteIntervention(del.id, user?.id ?? null)
+    } catch (e) {
+      setDelErr(e instanceof Error ? e.message : 'Could not delete.')
+      return
+    }
+    setDel(null); setDelText(''); setDelErr(null)
   }
 
   const grouped = useMemo(() => {
@@ -264,10 +271,19 @@ export default function Admin() {
                                   .map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
                               </select>
                               <button onClick={() => repo.saveCatalogueItem({ id: i.id, active: !i.active })}
-                                className={i.active ? 'text-lime' : 'text-white/25'}
+                                className={`flex items-center gap-1 text-[11px] ${i.active ? 'text-lime' : 'text-white/40'}`}
+                                title={i.active ? 'Active — click to deactivate (hides it from new assignments)' : 'Inactive — click to activate'}
                                 aria-label={i.active ? 'Deactivate' : 'Activate'}>
                                 {i.active ? <ToggleRight size={20} /> : <ToggleLeft size={20} />}
+                                {i.active ? 'Active' : 'Inactive'}
                               </button>
+                              {canManage && (
+                                <button onClick={() => { setDelErr(null); setDel({ kind: 'catalogue', id: i.id, name: i.name }) }}
+                                  className="text-white/30 hover:text-flame" title="Delete this intervention type"
+                                  aria-label="Delete">
+                                  <Trash2 size={16} />
+                                </button>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -667,20 +683,13 @@ export default function Admin() {
           <textarea className="input h-20 resize-none" value={cat.description}
             onChange={e => setCat({ ...cat, description: e.target.value })} />
         </Field>
-        <div className="grid gap-x-4 md:grid-cols-2">
-          <Field label="Estimated delivery">
-            <input className="input" placeholder="1-1.5 weeks" value={cat.est_delivery}
-              onChange={e => setCat({ ...cat, est_delivery: e.target.value })} />
-          </Field>
-          <Field label="Default owner" hint="Who this routes to by default.">
-            <select className="input" value={cat.default_owner_id}
-              onChange={e => setCat({ ...cat, default_owner_id: e.target.value })}>
-              <option value="">None</option>
-              {people.filter(p => p.role === 'consultant' || p.role === 'manco')
-                .map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-            </select>
-          </Field>
-        </div>
+        <Field label="Estimated delivery">
+          <input className="input" placeholder="1-1.5 weeks" value={cat.est_delivery}
+            onChange={e => setCat({ ...cat, est_delivery: e.target.value })} />
+        </Field>
+        <p className="mt-1 text-[11px] text-white/35">
+          New intervention types are created with <span className="text-white/60">no default owner</span>. You can set an owner later from the list if you want it to auto-route.
+        </p>
         <div className="flex justify-end gap-2">
           <button className="btn-ghost" onClick={() => setAddCat(false)}>Cancel</button>
           <button className="btn-primary" disabled={!cat.name || !cat.category}
@@ -900,14 +909,14 @@ export default function Admin() {
       </Modal>
 
       {/* Permanent-delete confirmation (type-to-confirm) */}
-      <Modal open={!!del} onClose={() => { setDel(null); setDelText('') }} title="Delete permanently">
+      <Modal open={!!del} onClose={() => { setDel(null); setDelText(''); setDelErr(null) }} title="Delete permanently">
         {del && (
           <div className="space-y-4">
             <div className="flex items-start gap-3 rounded-xl border border-flame/40 bg-flame-soft p-4">
               <AlertTriangle size={18} className="mt-0.5 shrink-0 text-flame" />
               <div className="text-sm text-white/80">
                 You're about to permanently delete{' '}
-                {del.kind === 'beneficiary' ? 'the beneficiary' : del.kind === 'user' ? 'the user' : 'the intervention'}{' '}
+                {del.kind === 'beneficiary' ? 'the beneficiary' : del.kind === 'user' ? 'the user' : del.kind === 'catalogue' ? 'the intervention type' : 'the intervention'}{' '}
                 <span className="text-white">{del.name}</span>{del.sub ? ` — ${del.sub}` : ''}.
                 <div className="mt-1.5 text-[12px] leading-relaxed text-white/50">
                   This can't be undone.{' '}
@@ -915,11 +924,16 @@ export default function Admin() {
                     ? 'Every intervention, weekly update, communication, escalation and activity-log entry for this beneficiary is deleted too.'
                     : del.kind === 'user'
                     ? 'Their login and profile are removed, and they are unassigned from any interventions or beneficiaries they owned.'
+                    : del.kind === 'catalogue'
+                    ? 'It is removed from the catalogue. It can’t be deleted while it’s still assigned to any beneficiary.'
                     : 'Its weekly updates, communications and escalations are deleted too.'}
-                  {' '}To just take it off the screens instead, cancel and use Hide.
+                  {' '}{del.kind === 'catalogue'
+                    ? 'To keep it but hide it from new assignments, cancel and switch it to Inactive instead.'
+                    : 'To just take it off the screens instead, cancel and use Hide.'}
                 </div>
               </div>
             </div>
+            {delErr && <div className="text-xs text-flame">{delErr}</div>}
             <Field label="Type DELETE to confirm">
               <input className="input" value={delText} autoFocus placeholder="DELETE"
                 onChange={e => setDelText(e.target.value)} />

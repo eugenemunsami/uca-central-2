@@ -840,6 +840,7 @@ export const repo = {
     if (LIVE) {
       if (item.id) await supabase!.from('intervention_catalogue').update(item).eq('id', item.id)
       else await supabase!.from('intervention_catalogue').insert(item)
+      ping()
       return
     }
     if (item.id) {
@@ -848,6 +849,24 @@ export const repo = {
     } else {
       db.catalogue.push({ id: uid(), active: true, category: 'Custom', name: 'New intervention', ...item } as CatalogueItem)
     }
+    ping()
+  },
+
+  // Permanently remove a catalogue (intervention type). Blocked while it's still
+  // assigned to any beneficiary — deactivate it instead in that case.
+  async deleteCatalogueItem(id: string) {
+    if (LIVE) {
+      const inUse = await sb<{ id: string }[]>(() =>
+        supabase!.from('interventions').select('id').eq('catalogue_id', id).limit(1) as never)
+      if (inUse.length) throw new Error('This intervention type is assigned to a beneficiary — deactivate it instead of deleting.')
+      await supabase!.from('intervention_catalogue').delete().eq('id', id)
+      ping()
+      return
+    }
+    if (db.interventions.some(iv => iv.catalogue_id === id)) {
+      throw new Error('This intervention type is assigned to a beneficiary — deactivate it instead of deleting.')
+    }
+    db.catalogue = db.catalogue.filter(c => c.id !== id)
     ping()
   },
 
