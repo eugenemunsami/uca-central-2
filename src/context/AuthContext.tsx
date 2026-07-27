@@ -102,6 +102,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         activated_at: new Date().toISOString(),
         ...(acceptTerms ? { terms_accepted_at: new Date().toISOString() } : {}),
       }).eq('id', id)
+      // Record the activation in the user's history and let the ManCo who
+      // invited them know they're in. Best-effort — never block sign-in.
+      try {
+        const { data: pr } = await supabase!.from('profiles').select('created_by, full_name, organisation, role').eq('id', id).single()
+        await supabase!.rpc('app_log_user_event', { p_target: id, p_by: null, p_kind: 'activated', p_text: 'Account activated by the user.' })
+        if (pr?.created_by) await supabase!.rpc('app_notify', { recipient_ids: [pr.created_by], p_kind: 'assigned', p_text: `${pr.full_name}${pr.organisation ? ` (${pr.organisation})` : ''} activated their ${pr.role} account.` })
+      } catch { /* activation side-effects are best-effort */ }
       await loadProfile(id)
       setRecovery(false)
       return null

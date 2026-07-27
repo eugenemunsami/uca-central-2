@@ -391,7 +391,12 @@ export const repo = {
 
   // ---------------- writes ----------------
   async addBeneficiary(input: Partial<Beneficiary> & { name: string; sponsor_id: string }) {
-    if (LIVE) { await supabase!.from('beneficiaries').insert(input); return }
+    if (LIVE) {
+      const rows = await sb<{ id: string }[]>(() => supabase!.from('beneficiaries').insert(input).select('id') as never)
+      const nid = rows[0]?.id
+      if (nid) { try { await supabase!.from('beneficiary_events').insert({ beneficiary_id: nid, user_id: input.project_manager_id ?? null, kind: 'loaded', text: null }) } catch { /* audit best-effort */ } }
+      ping(); return
+    }
     const nb = {
       id: uid(), stage: 'implementation', missed_welcome_parties: 0, needs_onsite: false,
       directors: [], lifecycle: 'active', cycle: 1, created_at: new Date().toISOString(), ...input,
@@ -403,7 +408,11 @@ export const repo = {
 
   // Bulk load a whole cohort at once (used by the Excel importer).
   async addBeneficiaries(rows: (Partial<Beneficiary> & { name: string; sponsor_id: string })[]) {
-    if (LIVE) { await supabase!.from('beneficiaries').insert(rows); return }
+    if (LIVE) {
+      const created = await sb<{ id: string; project_manager_id: string | null }[]>(() => supabase!.from('beneficiaries').insert(rows).select('id, project_manager_id') as never)
+      if (created.length) { try { await supabase!.from('beneficiary_events').insert(created.map(b => ({ beneficiary_id: b.id, user_id: b.project_manager_id ?? null, kind: 'loaded', text: null }))) } catch { /* audit best-effort */ } }
+      ping(); return
+    }
     rows.forEach(input => {
       const nb = {
         id: uid(), stage: 'implementation', missed_welcome_parties: 0, needs_onsite: false,
@@ -416,8 +425,20 @@ export const repo = {
   },
 
   async addIntervention(input: Partial<Intervention> & { beneficiary_id: string }) {
+    if (LIVE) {
+      const meta = await repo._benMeta(input.beneficiary_id)
+      const rows = await sb<{ id: string }[]>(() => supabase!.from('interventions').insert({ cycle: meta?.cycle ?? 1, ...input }).select('id') as never)
+      const nid = rows[0]?.id
+      if (nid) {
+        const info = await repo._ivInfo(nid)
+        try {
+          if (info) await supabase!.rpc('app_log_ben_event', { p_ben: input.beneficiary_id, p_user: null, p_kind: 'intervention_added', p_text: info.title })
+          if (input.consultant_id && info) await supabase!.rpc('app_notify', { recipient_ids: [input.consultant_id], p_kind: 'assigned', p_text: `New intervention assigned: ${info.beneficiary_name} — ${info.title}.` })
+        } catch { /* side-effects best-effort */ }
+      }
+      ping(); return
+    }
     const ben = db.beneficiaries.find(b => b.id === input.beneficiary_id)
-    if (LIVE) { await supabase!.from('interventions').insert({ cycle: ben?.cycle ?? 1, ...input }); return }
     db.interventions.push({
       id: uid(), kind: 'standard', status: 'not_started', closeout_status: 'none',
       assigned_at: new Date().toISOString(), acknowledged: false, acknowledged_at: null,
@@ -456,6 +477,14 @@ export const repo = {
       closeout_email_sent: opts?.email_sent ?? false,
       closeout_email_text: opts?.email_text ?? null,
     })
+    if (LIVE) {
+      const info = await repo._ivInfo(id)
+      if (info) try {
+        await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'closeout_requested', p_text: info.title + ' — files uploaded, close-out email sent.' })
+        await supabase!.rpc('app_notify_manco', { p_kind: 'closeout_requested', p_text: `Close-out to verify: ${info.beneficiary_name} — ${info.title}.`, p_action: true })
+      } catch { /* side-effects best-effort */ }
+      ping(); return
+    }
     const iv = db.interventions.find(i => i.id === id)
     if (iv) {
       pushBenEvent(iv.beneficiary_id, userId, 'closeout_requested', repo._ivTitle(iv) + ' — files uploaded, close-out email sent.')
@@ -466,12 +495,21 @@ export const repo = {
 
   // ManCo verifies the files + email and confirms -> intervention completed; client notified.
   async confirmCloseout(id: string, userId: string | null) {
+    const info = LIVE ? await repo._ivInfo(id) : null
     const iv = db.interventions.find(i => i.id === id)
     await repo.updateIntervention(id, {
       closeout_status: 'confirmed', status: 'completed',
       completed_at: new Date().toISOString(), awaiting_response_since: null,
       closeout_confirmed_by: userId, closeout_confirmed_at: new Date().toISOString(),
     })
+    if (LIVE) {
+      if (info) try {
+        await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'closeout_confirmed', p_text: info.title + ' verified and confirmed.' })
+        if (info.closeout_requested_by) await supabase!.rpc('app_notify', { recipient_ids: [info.closeout_requested_by], p_kind: 'closeout_confirmed', p_text: `Your close-out was confirmed: ${info.title}.` })
+        await supabase!.rpc('app_notify_client', { p_ben: info.beneficiary_id, p_kind: 'intervention_closed', p_text: `An intervention closed out: ${info.beneficiary_name} — ${info.title}.` })
+      } catch { /* side-effects best-effort */ }
+      ping(); return
+    }
     if (iv) {
       pushBenEvent(iv.beneficiary_id, userId, 'closeout_confirmed', repo._ivTitle(iv) + ' verified and confirmed.')
       if (iv.closeout_requested_by) notify([iv.closeout_requested_by], 'closeout_confirmed', `Your close-out was confirmed: ${repo._ivTitle(iv)}.`, '')
@@ -482,8 +520,16 @@ export const repo = {
 
   // ManCo returns a close-out to the consultant with a reason.
   async returnCloseout(id: string, userId: string | null, reason: string) {
+    const info = LIVE ? await repo._ivInfo(id) : null
     const iv = db.interventions.find(i => i.id === id)
     await repo.updateIntervention(id, { closeout_status: 'none' })
+    if (LIVE) {
+      if (info) try {
+        await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'closeout_returned', p_text: `${info.title} returned: ${reason}` })
+        if (info.closeout_requested_by) await supabase!.rpc('app_notify', { recipient_ids: [info.closeout_requested_by], p_kind: 'closeout_returned', p_text: `Close-out returned on ${info.title}: ${reason}`, p_action_owner: info.closeout_requested_by })
+      } catch { /* side-effects best-effort */ }
+      ping(); return
+    }
     if (iv) {
       pushBenEvent(iv.beneficiary_id, userId, 'closeout_returned', `${repo._ivTitle(iv)} returned: ${reason}`)
       if (iv.closeout_requested_by) notify([iv.closeout_requested_by], 'closeout_returned', `Close-out returned on ${repo._ivTitle(iv)}: ${reason}`, '')
@@ -492,15 +538,25 @@ export const repo = {
 
   // Consultant grants an allowable delay: pauses the red clock until the given date.
   async grantDelay(id: string, userId: string | null, until: string, note?: string) {
+    const info = LIVE ? await repo._ivInfo(id) : null
     const iv = db.interventions.find(i => i.id === id)
     await repo.updateIntervention(id, { response_extended_until: until })
+    if (LIVE) {
+      if (info) try { await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'delay_granted', p_text: `${info.title} — allowable delay until ${until}. ${note ?? ''}`.trim() }) } catch { /* best-effort */ }
+      ping(); return
+    }
     if (iv) pushBenEvent(iv.beneficiary_id, userId, 'delay_granted', `${repo._ivTitle(iv)} — allowable delay until ${until}. ${note ?? ''}`.trim())
   },
 
   // Soft-cancel an intervention (never hard-deleted).
   async cancelIntervention(id: string, userId: string | null) {
+    const info = LIVE ? await repo._ivInfo(id) : null
     const iv = db.interventions.find(i => i.id === id)
     await repo.updateIntervention(id, { cancelled: true })
+    if (LIVE) {
+      if (info) try { await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'intervention_cancelled', p_text: info.title }) } catch { /* best-effort */ }
+      ping(); return
+    }
     if (iv) pushBenEvent(iv.beneficiary_id, userId, 'intervention_cancelled', repo._ivTitle(iv))
   },
 
@@ -564,6 +620,15 @@ export const repo = {
 
   // ManCo produces the POE/close-out report, drops it in the Drive folder, sends to client.
   async submitBeneficiaryCloseout(benId: string, userId: string | null, reportUrl: string, note?: string) {
+    if (LIVE) {
+      const meta = await repo._benMeta(benId); if (!meta) return
+      await supabase!.from('beneficiaries').update({ lifecycle: 'closeout_sent', closeout_report_url: reportUrl, closeout_return_notes: null }).eq('id', benId)
+      try {
+        await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'closeout_report_sent', p_text: note || 'POE/close-out report produced and sent to the client.' })
+        await supabase!.rpc('app_notify_client', { p_ben: benId, p_kind: 'beneficiary_closeout_sent', p_text: `Close-out report to review: ${meta.name}.` })
+      } catch { /* side-effects best-effort */ }
+      ping(); return
+    }
     const b = db.beneficiaries.find(x => x.id === benId); if (!b) return
     b.lifecycle = 'closeout_sent'; b.closeout_report_url = reportUrl; b.closeout_return_notes = null
     pushBenEvent(benId, userId, 'closeout_report_sent', note || 'POE/close-out report produced and sent to the client.')
@@ -574,6 +639,15 @@ export const repo = {
 
   // Client acknowledges -> concluded (visible for the month).
   async acknowledgeBeneficiaryCloseout(benId: string, userId: string | null) {
+    if (LIVE) {
+      const meta = await repo._benMeta(benId); if (!meta || meta.lifecycle !== 'closeout_sent') return
+      await supabase!.from('beneficiaries').update({ lifecycle: 'concluded', concluded_at: new Date().toISOString() }).eq('id', benId)
+      try {
+        await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'concluded', p_text: 'Client acknowledged the close-out.' })
+        await supabase!.rpc('app_notify_manco', { p_kind: 'beneficiary_concluded', p_text: `${meta.name} concluded — client acknowledged.` })
+      } catch { /* side-effects best-effort */ }
+      ping(); return
+    }
     const b = db.beneficiaries.find(x => x.id === benId); if (!b || b.lifecycle !== 'closeout_sent') return
     b.lifecycle = 'concluded'; b.concluded_at = new Date().toISOString()
     pushBenEvent(benId, userId, 'concluded', 'Client acknowledged the close-out.')
@@ -585,6 +659,15 @@ export const repo = {
 
   // Client returns the close-out with items to resolve -> back to ManCo queue.
   async returnBeneficiaryCloseout(benId: string, userId: string | null, notes: string) {
+    if (LIVE) {
+      const meta = await repo._benMeta(benId); if (!meta || meta.lifecycle !== 'closeout_sent') return
+      await supabase!.from('beneficiaries').update({ lifecycle: 'pending_closeout', closeout_return_notes: notes }).eq('id', benId)
+      try {
+        await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'returned_by_client', p_text: notes })
+        if (meta.project_manager_id) await supabase!.rpc('app_notify', { recipient_ids: [meta.project_manager_id], p_kind: 'beneficiary_returned', p_text: `${meta.name} close-out returned by client: ${notes}`, p_action_owner: meta.project_manager_id })
+      } catch { /* side-effects best-effort */ }
+      ping(); return
+    }
     const b = db.beneficiaries.find(x => x.id === benId); if (!b || b.lifecycle !== 'closeout_sent') return
     b.lifecycle = 'pending_closeout'; b.closeout_return_notes = notes
     pushBenEvent(benId, userId, 'returned_by_client', notes)
@@ -595,6 +678,12 @@ export const repo = {
 
   // ManCo archives a concluded beneficiary (kept for records, re-onboardable).
   async archiveBeneficiary(benId: string, userId: string | null) {
+    if (LIVE) {
+      const meta = await repo._benMeta(benId); if (!meta || meta.lifecycle !== 'concluded') return
+      await supabase!.from('beneficiaries').update({ lifecycle: 'archived', archived_at: new Date().toISOString() }).eq('id', benId)
+      try { await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'archived', p_text: 'Archived after month-end extract.' }) } catch { /* best-effort */ }
+      ping(); return
+    }
     const b = db.beneficiaries.find(x => x.id === benId); if (!b || b.lifecycle !== 'concluded') return
     b.lifecycle = 'archived'; b.archived_at = new Date().toISOString()
     pushBenEvent(benId, userId, 'archived', 'Archived after month-end extract.')
@@ -641,6 +730,13 @@ export const repo = {
 
   // Re-onboard a repeat beneficiary: same record, new cycle + new SOW; history carries over.
   async reonboardBeneficiary(benId: string, userId: string | null, sowDate: string) {
+    if (LIVE) {
+      const meta = await repo._benMeta(benId); if (!meta) return
+      const nextCycle = (meta.cycle ?? 1) + 1
+      await supabase!.from('beneficiaries').update({ lifecycle: 'active', cycle: nextCycle, sow_signed_date: sowDate, concluded_at: null, archived_at: null, closeout_report_url: null }).eq('id', benId)
+      try { await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'reonboarded', p_text: `Re-onboarded for cycle ${nextCycle} with a new SOW.` }) } catch { /* best-effort */ }
+      ping(); return
+    }
     const b = db.beneficiaries.find(x => x.id === benId); if (!b) return
     b.lifecycle = 'active'; b.cycle = (b.cycle ?? 1) + 1
     b.sow_signed_date = sowDate; b.concluded_at = null; b.archived_at = null; b.closeout_report_url = null
@@ -650,6 +746,11 @@ export const repo = {
   },
 
   async updateBeneficiary(benId: string, patch: Partial<Beneficiary>, userId: string | null) {
+    if (LIVE) {
+      await supabase!.from('beneficiaries').update(patch).eq('id', benId)
+      try { await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'edited', p_text: 'Beneficiary details updated.' }) } catch { /* best-effort */ }
+      ping(); return
+    }
     const i = db.beneficiaries.findIndex(x => x.id === benId); if (i < 0) return
     db.beneficiaries[i] = { ...db.beneficiaries[i], ...patch }
     pushBenEvent(benId, userId, 'edited', 'Beneficiary details updated.')
@@ -670,7 +771,11 @@ export const repo = {
   },
 
   async addComm(c: Omit<Comm, 'id'>) {
-    if (LIVE) { await supabase!.from('comms_log').insert(c); return }
+    if (LIVE) {
+      await supabase!.from('comms_log').insert(c)
+      try { await supabase!.from('beneficiaries').update({ last_engagement_at: c.occurred_at }).eq('id', c.beneficiary_id) } catch { /* best-effort */ }
+      ping(); return
+    }
     db.comms.unshift({ ...c, id: uid() })
     const b = db.beneficiaries.findIndex(x => x.id === c.beneficiary_id)
     if (b >= 0) db.beneficiaries[b].last_engagement_at = c.occurred_at
@@ -694,6 +799,30 @@ export const repo = {
     if (!LIVE) return repo._benName(id)
     const rows = await sb<{ name: string }[]>(() => supabase!.from('beneficiaries').select('name').eq('id', id).limit(1) as never)
     return rows[0]?.name ?? 'a beneficiary'
+  },
+
+  // Beneficiary lifecycle + label (live reads the row; demo uses the seed).
+  async _benMeta(id: string): Promise<{ name: string; lifecycle: string; cycle: number; project_manager_id: string | null } | null> {
+    if (!LIVE) {
+      const b = db.beneficiaries.find(x => x.id === id)
+      return b ? { name: b.name, lifecycle: b.lifecycle, cycle: b.cycle ?? 1, project_manager_id: b.project_manager_id ?? null } : null
+    }
+    const rows = await sb<{ name: string; lifecycle: string; cycle: number; project_manager_id: string | null }[]>(
+      () => supabase!.from('beneficiaries').select('name, lifecycle, cycle, project_manager_id').eq('id', id).limit(1) as never)
+    return rows[0] ?? null
+  },
+
+  // Intervention title + beneficiary label. Live reads the RAG view, which
+  // already resolves the catalogue name + beneficiary name in a single row.
+  async _ivInfo(id: string): Promise<{ beneficiary_id: string; title: string; beneficiary_name: string; consultant_id: string | null; closeout_requested_by: string | null } | null> {
+    if (!LIVE) {
+      const iv = db.interventions.find(x => x.id === id)
+      if (!iv) return null
+      return { beneficiary_id: iv.beneficiary_id, title: repo._ivTitle(iv), beneficiary_name: repo._benName(iv.beneficiary_id), consultant_id: iv.consultant_id ?? null, closeout_requested_by: iv.closeout_requested_by ?? null }
+    }
+    const rows = await sb<{ beneficiary_id: string; title: string; beneficiary_name: string; consultant_id: string | null; closeout_requested_by: string | null }[]>(
+      () => supabase!.from('v_intervention_rag').select('beneficiary_id, title, beneficiary_name, consultant_id, closeout_requested_by').eq('id', id).limit(1) as never)
+    return rows[0] ?? null
   },
 
   _addParticipant(e: Escalation, userId: string | null) {
