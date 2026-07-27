@@ -678,7 +678,23 @@ export const repo = {
   },
 
   // ---- escalation: ownership-baton state machine (per single intervention) ----
+  // Works in demo (in-memory) AND live (Supabase): every hand-off updates the
+  // escalation row, writes an audit event, and notifies the participants.
   _esc(id: string) { return db.escalations.find(x => x.id === id) },
+
+  // Single fetch — live reads the row from Supabase; demo uses the in-memory seed.
+  async _getEsc(id: string): Promise<Escalation | undefined> {
+    if (!LIVE) return db.escalations.find(x => x.id === id)
+    const rows = await sb<Escalation[]>(() => supabase!.from('escalations').select('*').eq('id', id).limit(1) as never)
+    return rows[0]
+  },
+
+  // Beneficiary name for notification/label text (live reads the row).
+  async _benLabel(id: string): Promise<string> {
+    if (!LIVE) return repo._benName(id)
+    const rows = await sb<{ name: string }[]>(() => supabase!.from('beneficiaries').select('name').eq('id', id).limit(1) as never)
+    return rows[0]?.name ?? 'a beneficiary'
+  },
 
   _addParticipant(e: Escalation, userId: string | null) {
     if (userId && !e.participants.includes(userId)) e.participants.push(userId)
@@ -689,6 +705,37 @@ export const repo = {
     intervention_id: string; beneficiary_id: string; consultant_id: string
     manco_id: string; reason: string; context?: string | null
   }) {
+    if (LIVE) {
+      const ins = await sb<{ id: string }[]>(() => supabase!.from('escalations').insert({
+        intervention_id: input.intervention_id, beneficiary_id: input.beneficiary_id,
+        reason: input.reason, context: input.context ?? null, status: 'with_manco',
+        current_owner_id: input.manco_id, current_owner_role: 'manco',
+        consultant_id: input.consultant_id, manco_id: input.manco_id, sponsor_id: null,
+        participants: [input.consultant_id, input.manco_id],
+        raised_by: input.consultant_id,
+      }).select('id') as never)
+      const newId = ins[0]?.id
+      if (newId) {
+        await supabase!.from('escalation_events').insert({
+          escalation_id: newId, user_id: input.consultant_id, kind: 'escalated_to_manco',
+          to_status: 'with_manco', to_owner_id: input.manco_id,
+          text: input.reason + (input.context ? '\n\nContext: ' + input.context : ''),
+        })
+        await supabase!.from('beneficiary_events').insert({
+          beneficiary_id: input.beneficiary_id, user_id: input.consultant_id,
+          kind: 'note', text: 'Intervention escalated to ManCo.',
+        })
+        try {
+          await supabase!.from('notifications').insert({
+            user_id: input.manco_id, kind: 'escalation_released',
+            text: `Escalation to review: ${await repo._benLabel(input.beneficiary_id)}.`,
+            escalation_id: newId, action_required: true,
+          })
+        } catch { /* notification is best-effort */ }
+      }
+      ping()
+      return
+    }
     const now = new Date().toISOString()
     const e: Escalation = {
       id: uid(), intervention_id: input.intervention_id, beneficiary_id: input.beneficiary_id,
@@ -698,7 +745,6 @@ export const repo = {
       participants: [input.consultant_id, input.manco_id],
       raised_by: input.consultant_id, raised_at: now, last_action_at: now, resolved_at: null,
     }
-    if (LIVE) { await supabase!.from('escalations').insert(e); return }
     db.escalations.unshift(e)
     pushEscEvent(e.id, input.consultant_id, 'escalated_to_manco', {
       to_status: 'with_manco', to_owner_id: input.manco_id,
@@ -707,6 +753,42 @@ export const repo = {
     pushBenEvent(input.beneficiary_id, input.consultant_id, 'note', 'Intervention escalated to ManCo.')
     notifyEsc(e, input.consultant_id, `Escalation to review: ${repo._benName(input.beneficiary_id)}.`, input.manco_id)
     ping()
+  },
+
+  // Apply a baton hand-off. Live: patch the escalation, log the event, notify the
+  // participants (best-effort). Demo: mutate the in-memory row via _transfer.
+  async _applyTransfer(e: Escalation, actorId: string, kind: EscalationEvent['kind'], toStatus: EscStatus,
+    toOwnerId: string | null, ownerRole: Escalation['current_owner_role'], text: string, notice: string,
+    extra: Partial<Escalation> = {}) {
+    if (LIVE) {
+      const from_status = e.status, from_owner = e.current_owner_id
+      const now = new Date().toISOString()
+      const participants = Array.from(new Set([...(e.participants ?? []), actorId, toOwnerId].filter(Boolean))) as string[]
+      const patch: Record<string, unknown> = {
+        status: toStatus, current_owner_id: toOwnerId, current_owner_role: ownerRole,
+        last_action_at: now, participants, ...extra,
+      }
+      if (toStatus === 'resolved') patch.resolved_at = now
+      await supabase!.from('escalations').update(patch).eq('id', e.id)
+      await supabase!.from('escalation_events').insert({
+        escalation_id: e.id, user_id: actorId, kind,
+        from_status, to_status: toStatus, from_owner_id: from_owner, to_owner_id: toOwnerId, text,
+      })
+      const recips = participants.filter(u => u && u !== actorId)
+      if (recips.length) {
+        try {
+          await supabase!.from('notifications').insert(recips.map(u => ({
+            user_id: u, kind: 'escalation_released', text: notice,
+            escalation_id: e.id, action_required: u === toOwnerId,
+          })))
+        } catch { /* notifications are best-effort */ }
+      }
+      ping()
+      return
+    }
+    if (extra.manco_id !== undefined) e.manco_id = extra.manco_id
+    if (extra.sponsor_id !== undefined) e.sponsor_id = extra.sponsor_id
+    repo._transfer(e, actorId, kind, toStatus, toOwnerId, ownerRole, text, notice)
   },
 
   _transfer(e: Escalation, actorId: string, kind: EscalationEvent['kind'], toStatus: EscStatus,
@@ -723,80 +805,98 @@ export const repo = {
 
   // 2A) ManCo declines -> back to consultant (reason + suggested way forward).
   async mancoDecline(id: string, mancoId: string, reason: string, wayForward: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== mancoId) return
-    repo._transfer(e, mancoId, 'declined_to_consultant', 'returned_to_consultant', e.consultant_id, 'consultant',
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== mancoId) return
+    await repo._applyTransfer(e, mancoId, 'declined_to_consultant', 'returned_to_consultant', e.consultant_id, 'consultant',
       `Declined: ${reason}\nSuggested way forward: ${wayForward}`,
-      `Escalation returned to you: ${repo._benName(e.beneficiary_id)}.`)
+      `Escalation returned to you: ${await repo._benLabel(e.beneficiary_id)}.`)
   },
 
   // 2B) ManCo escalates to a chosen Aggregator/Sponsor recipient.
   async mancoEscalateSponsor(id: string, mancoId: string, sponsorUserId: string, reason: string, expectedAction: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== mancoId) return
-    e.manco_id = mancoId; e.sponsor_id = sponsorUserId
-    repo._transfer(e, mancoId, 'escalated_to_sponsor', 'with_sponsor', sponsorUserId, 'external',
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== mancoId) return
+    await repo._applyTransfer(e, mancoId, 'escalated_to_sponsor', 'with_sponsor', sponsorUserId, 'external',
       `${reason}\nExpected action: ${expectedAction}`,
-      `Escalation to review: ${repo._benName(e.beneficiary_id)}.`)
+      `Escalation to review: ${await repo._benLabel(e.beneficiary_id)}.`,
+      { manco_id: mancoId, sponsor_id: sponsorUserId })
   },
 
   // Consultant accepts a returned escalation -> resolved & unlocked.
   async consultantAcceptReturn(id: string, consultantId: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== consultantId) return
-    repo._transfer(e, consultantId, 'accepted', 'resolved', consultantId, 'consultant',
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== consultantId) return
+    await repo._applyTransfer(e, consultantId, 'accepted', 'resolved', consultantId, 'consultant',
       'Accepted the return and resumed the case.',
-      `Escalation closed: ${repo._benName(e.beneficiary_id)}.`)
+      `Escalation closed: ${await repo._benLabel(e.beneficiary_id)}.`)
   },
 
   // Consultant re-escalates to a chosen ManCo (from returned or outcome).
   async consultantReEscalate(id: string, consultantId: string, mancoId: string, reason: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== consultantId) return
-    e.manco_id = mancoId
-    repo._transfer(e, consultantId, 'reescalated', 'with_manco', mancoId, 'manco',
-      `Re-escalated: ${reason}`, `Escalation to review: ${repo._benName(e.beneficiary_id)}.`)
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== consultantId) return
+    await repo._applyTransfer(e, consultantId, 'reescalated', 'with_manco', mancoId, 'manco',
+      `Re-escalated: ${reason}`, `Escalation to review: ${await repo._benLabel(e.beneficiary_id)}.`,
+      { manco_id: mancoId })
   },
 
   // 3A) Sponsor declines -> back to the ManCo who sent it.
   async sponsorDecline(id: string, sponsorUserId: string, reason: string, wayForward: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== sponsorUserId) return
-    repo._transfer(e, sponsorUserId, 'declined_to_manco', 'returned_to_manco', e.manco_id ?? null, 'manco',
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== sponsorUserId) return
+    await repo._applyTransfer(e, sponsorUserId, 'declined_to_manco', 'returned_to_manco', e.manco_id ?? null, 'manco',
       `Declined: ${reason}\nSuggested way forward: ${wayForward}`,
-      `Escalation returned by sponsor: ${repo._benName(e.beneficiary_id)}.`)
+      `Escalation returned by sponsor: ${await repo._benLabel(e.beneficiary_id)}.`)
   },
 
   // 3B) Sponsor submits a proposed resolution -> back to ManCo to review (not auto-closed).
   async sponsorResolve(id: string, sponsorUserId: string, action: string, resolution: string, notes?: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== sponsorUserId) return
-    repo._transfer(e, sponsorUserId, 'resolution_submitted', 'resolution_submitted', e.manco_id ?? null, 'manco',
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== sponsorUserId) return
+    await repo._applyTransfer(e, sponsorUserId, 'resolution_submitted', 'resolution_submitted', e.manco_id ?? null, 'manco',
       `Action taken: ${action}\nProposed resolution: ${resolution}${notes ? '\nNotes: ' + notes : ''}`,
-      `Resolution submitted for review: ${repo._benName(e.beneficiary_id)}.`)
+      `Resolution submitted for review: ${await repo._benLabel(e.beneficiary_id)}.`)
   },
 
   // 4) ManCo returns the outcome to the consultant.
   async mancoReturnToConsultant(id: string, mancoId: string, resolution: string, nextSteps: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== mancoId) return
-    repo._transfer(e, mancoId, 'returned_to_consultant', 'outcome_to_consultant', e.consultant_id, 'consultant',
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== mancoId) return
+    await repo._applyTransfer(e, mancoId, 'returned_to_consultant', 'outcome_to_consultant', e.consultant_id, 'consultant',
       `Outcome: ${resolution}\nNext steps: ${nextSteps}`,
-      `Escalation outcome received: ${repo._benName(e.beneficiary_id)}.`)
+      `Escalation outcome received: ${await repo._benLabel(e.beneficiary_id)}.`)
   },
 
   // 4) ManCo re-escalates back to a sponsor with additional context.
   async mancoReEscalateSponsor(id: string, mancoId: string, sponsorUserId: string, context: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== mancoId) return
-    e.sponsor_id = sponsorUserId
-    repo._transfer(e, mancoId, 'reescalated', 'with_sponsor', sponsorUserId, 'external',
-      `Re-escalated with more context: ${context}`, `Escalation to review: ${repo._benName(e.beneficiary_id)}.`)
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== mancoId) return
+    await repo._applyTransfer(e, mancoId, 'reescalated', 'with_sponsor', sponsorUserId, 'external',
+      `Re-escalated with more context: ${context}`, `Escalation to review: ${await repo._benLabel(e.beneficiary_id)}.`,
+      { sponsor_id: sponsorUserId })
   },
 
   // Consultant accepts the outcome -> resolved & unlocked.
   async consultantAcceptResume(id: string, consultantId: string) {
-    const e = repo._esc(id); if (!e || e.current_owner_id !== consultantId) return
-    repo._transfer(e, consultantId, 'accepted', 'resolved', consultantId, 'consultant',
-      'Accepted the outcome and resumed the case.', `Escalation closed: ${repo._benName(e.beneficiary_id)}.`)
+    const e = await repo._getEsc(id); if (!e || e.current_owner_id !== consultantId) return
+    await repo._applyTransfer(e, consultantId, 'accepted', 'resolved', consultantId, 'consultant',
+      'Accepted the outcome and resumed the case.', `Escalation closed: ${await repo._benLabel(e.beneficiary_id)}.`)
   },
 
   // Any current owner or participant may add a note to the audit trail.
   async addEscalationNote(id: string, userId: string | null, text: string) {
+    if (LIVE) {
+      await supabase!.from('escalation_events').insert({ escalation_id: id, user_id: userId, kind: 'note', text })
+      const e = await repo._getEsc(id)
+      if (e) {
+        const recips = (e.participants ?? []).filter(u => u && u !== userId)
+        if (recips.length) {
+          const label = await repo._benLabel(e.beneficiary_id)
+          try {
+            await supabase!.from('notifications').insert(recips.map(u => ({
+              user_id: u, kind: 'escalation_released',
+              text: `New note on the escalation for ${label}.`,
+              escalation_id: id, action_required: false,
+            })))
+          } catch { /* best-effort */ }
+        }
+      }
+      ping()
+      return
+    }
     const e = repo._esc(id); if (!e) return
-    if (LIVE) { await supabase!.from('escalation_events').insert({ escalation_id: id, user_id: userId, kind: 'note', text }); return }
     pushEscEvent(id, userId, 'note', { text })
     notifyEsc(e, userId, `Note added on ${repo._benName(e.beneficiary_id)}.`, null)
     ping()
