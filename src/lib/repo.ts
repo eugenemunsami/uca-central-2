@@ -1,10 +1,13 @@
 import { LIVE, supabase } from './supabase'
 import * as seed from './demo'
 import { computeRag, worst } from './rag'
+import { ONB_STATUS_OWNER } from './types'
 import type {
   Aggregator, Beneficiary, BeneficiaryEvent, BeneficiaryView, CatalogueItem, Comm, Escalation,
   EscalationEvent, EscalationView, EscStatus, EscSuggestion, Intervention, InterventionView,
   Notification, Profile, Rag, RagOverride, Role, Sponsor, UserEvent, UserStatus, WeeklyUpdate,
+  Onboarding, OnboardingEvent, OnboardingView, OnbStatus, OnbOwnerRole, OnbEventKind,
+  WelcomeParty, WelcomePartyInvite,
 } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -24,6 +27,10 @@ const db = {
   userEvents: [...seed.userEvents],
   notifications: [...seed.notifications],
   overrides: [...seed.ragOverrides],
+  onboardings: [...seed.onboardings],
+  welcomeParties: [...seed.welcomeParties],
+  welcomePartyInvites: [...seed.welcomePartyInvites],
+  onboardingEvents: [...seed.onboardingEvents],
 }
 
 const listeners = new Set<() => void>()
@@ -152,6 +159,27 @@ function decorateEsc(e: Escalation): EscalationView {
     owner_org: owner?.organisation ?? owner?.discipline ?? null,
     consultant_name: consultant?.full_name ?? null,
     time_to_resolve_days: ttr,
+  }
+}
+
+function decorateOnb(o: Onboarding): OnboardingView {
+  const sponsor = db.sponsors.find(s => s.id === o.sponsor_id)
+  const aggregator = db.aggregators.find(a => a.id === sponsor?.aggregator_id)
+  const owner = db.profiles.find(p => p.id === o.current_owner_id)
+  const manco = db.profiles.find(p => p.id === o.manco_id)
+  const consultant = db.profiles.find(p => p.id === o.consultant_id)
+  const party = db.welcomeParties.find(w => w.id === o.welcome_party_id)
+  return {
+    ...o,
+    sponsor_name: sponsor?.name ?? '-',
+    client_name: aggregator?.name ?? sponsor?.name ?? '-',
+    client_id: aggregator?.id ?? sponsor?.id ?? '',
+    owner_name: owner?.full_name ?? null,
+    owner_org: owner?.organisation ?? owner?.discipline ?? null,
+    manco_name: manco?.full_name ?? null,
+    consultant_name: consultant?.full_name ?? null,
+    welcome_party_date: party?.party_date ?? null,
+    is_red: o.status === 'red_no_show' || (o.missed_welcome_parties ?? 0) >= 2,
   }
 }
 
@@ -1266,6 +1294,270 @@ export const repo = {
     } else {
       pushUserEvent(id, byUserId, 'role_changed', `Role changed from ${prev} to ${role}.`)
     }
+    ping()
+  },
+
+  // ================= Onboarding (pre-SOW pipeline) =================
+  async onboardings(): Promise<OnboardingView[]> {
+    if (!LIVE) return db.onboardings.map(decorateOnb)
+    return sb<OnboardingView[]>(() => supabase!.from('v_onboarding').select('*').order('last_action_at', { ascending: false }) as never)
+  },
+
+  async welcomeParties(): Promise<WelcomeParty[]> {
+    if (!LIVE) return [...db.welcomeParties]
+    return sb<WelcomeParty[]>(() => supabase!.from('welcome_parties').select('*').order('party_date', { ascending: false }) as never)
+  },
+
+  async welcomePartyInvites(): Promise<WelcomePartyInvite[]> {
+    if (!LIVE) return [...db.welcomePartyInvites]
+    return sb<WelcomePartyInvite[]>(() => supabase!.from('welcome_party_invites').select('*') as never)
+  },
+
+  async onboardingEvents(): Promise<OnboardingEvent[]> {
+    if (!LIVE) return [...db.onboardingEvents]
+    return sb<OnboardingEvent[]>(() => supabase!.from('onboarding_events').select('*').order('at', { ascending: false }) as never)
+  },
+
+  // The person accountable for a given owner-role on this ticket.
+  _onbOwnerId(o: Onboarding, role: OnbOwnerRole): string | null {
+    if (role === 'exco') return o.exco_id ?? null
+    if (role === 'manco') return o.manco_id ?? null
+    if (role === 'consultant') return o.consultant_id ?? null
+    return null   // external: the sponsor organisation, no specific user
+  },
+
+  async _getOnb(id: string): Promise<Onboarding | undefined> {
+    if (!LIVE) return db.onboardings.find(x => x.id === id)
+    const rows = await sb<Onboarding[]>(() => supabase!.from('onboardings').select('*').eq('id', id).limit(1) as never)
+    return rows[0]
+  },
+
+  // A hand-off: set the new status + owner, log the audit event, notify the next
+  // internal actor. Notifications for sponsor-owned stages go to the owning ManCo,
+  // since sponsor actions are recorded internally.
+  async _onbApply(o: Onboarding, actorId: string | null, kind: OnbEventKind, toStatus: OnbStatus,
+    patch: Partial<Onboarding> = {}, text: string | null = null, notice: string | null = null) {
+    const fromStatus = o.status, fromOwner = o.current_owner_id ?? null
+    const role = ONB_STATUS_OWNER[toStatus]
+    const merged = { ...o, ...patch }
+    const ownerId = repo._onbOwnerId(merged, role)
+    const now = new Date().toISOString()
+    const participants = Array.from(new Set([...(o.participants ?? []), actorId, ownerId].filter(Boolean))) as string[]
+    const notifyTarget = ownerId ?? merged.manco_id ?? null
+    if (LIVE) {
+      await supabase!.from('onboardings').update({
+        ...patch, status: toStatus, current_owner_role: role, current_owner_id: ownerId,
+        participants, last_action_at: now,
+      }).eq('id', o.id)
+      await supabase!.from('onboarding_events').insert({
+        onboarding_id: o.id, user_id: actorId, kind,
+        from_status: fromStatus, to_status: toStatus, from_owner_id: fromOwner, to_owner_id: ownerId, text,
+      })
+      if (notice && notifyTarget && notifyTarget !== actorId) {
+        try { await supabase!.rpc('app_notify', { recipient_ids: [notifyTarget], p_kind: 'onboarding', p_text: notice }) } catch { /* best-effort */ }
+      }
+      ping(); return
+    }
+    const i = db.onboardings.findIndex(x => x.id === o.id)
+    if (i >= 0) db.onboardings[i] = { ...merged, status: toStatus, current_owner_role: role, current_owner_id: ownerId, participants, last_action_at: now }
+    db.onboardingEvents.unshift({ id: uid(), onboarding_id: o.id, at: now, user_id: actorId, kind, from_status: fromStatus, to_status: toStatus, from_owner_id: fromOwner, to_owner_id: ownerId, text: text ?? null })
+    if (notice && notifyTarget && notifyTarget !== actorId) db.notifications.unshift({ id: uid(), user_id: notifyTarget, at: now, kind: 'onboarding', text: notice, escalation_id: null, action_required: true, read: false })
+    ping()
+  },
+
+  // A log-only event (no status change): comms sent, notes.
+  async _logOnb(id: string, actorId: string | null, kind: OnbEventKind, text: string | null) {
+    const now = new Date().toISOString()
+    if (LIVE) {
+      await supabase!.from('onboarding_events').insert({ onboarding_id: id, user_id: actorId, kind, text })
+      await supabase!.from('onboardings').update({ last_action_at: now }).eq('id', id)
+      ping(); return
+    }
+    db.onboardingEvents.unshift({ id: uid(), onboarding_id: id, at: now, user_id: actorId, kind, text: text ?? null })
+    const i = db.onboardings.findIndex(x => x.id === id); if (i >= 0) db.onboardings[i].last_action_at = now
+    ping()
+  },
+
+  // 1) Exco opens the ticket from the sponsor's invoice request.
+  async createOnboarding(input: {
+    name: string; sponsor_id: string; budget?: number | null; industry?: string | null
+    contact_person?: string | null; contact_email?: string | null; contact_phone?: string | null
+  }, excoId: string | null) {
+    const base = {
+      name: input.name, sponsor_id: input.sponsor_id, budget: input.budget ?? null,
+      industry: input.industry ?? null, contact_person: input.contact_person ?? null,
+      contact_email: input.contact_email ?? null, contact_phone: input.contact_phone ?? null,
+      status: 'invoice_requested' as OnbStatus, current_owner_role: 'exco' as OnbOwnerRole,
+      current_owner_id: excoId, exco_id: excoId, created_by: excoId,
+      participants: excoId ? [excoId] : [],
+    }
+    if (LIVE) {
+      const rows = await sb<{ id: string }[]>(() => supabase!.from('onboardings').insert(base).select('id') as never)
+      const nid = rows[0]?.id
+      if (nid) { try { await supabase!.from('onboarding_events').insert({ onboarding_id: nid, user_id: excoId, kind: 'created', to_status: 'invoice_requested', text: `Onboarding opened for ${input.name}.` }) } catch { /* best-effort */ } }
+      ping(); return
+    }
+    const now = new Date().toISOString()
+    const o = { id: uid(), ...base, needs_onsite: false, ember_applicable: true, missed_welcome_parties: 0, created_at: now, last_action_at: now } as Onboarding
+    db.onboardings.unshift(o)
+    db.onboardingEvents.unshift({ id: uid(), onboarding_id: o.id, at: now, user_id: excoId, kind: 'created', to_status: 'invoice_requested', text: `Onboarding opened for ${input.name}.` })
+    ping()
+  },
+
+  // 2) Exco records the invoice + budget and assigns a ManCo.
+  async excoSendInvoice(id: string, actorId: string | null, invoiceNumber: string, budget: number | null, mancoId: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'invoice_sent', 'with_manco',
+      { invoice_number: invoiceNumber, budget, manco_id: mancoId },
+      `Invoice ${invoiceNumber} sent to the sponsor. Budget recorded.`,
+      `New beneficiary to onboard: ${o.name} (invoice ${invoiceNumber}).`)
+  },
+
+  // 3) ManCo assigns a consultant to load Ember360 (+ optional site-visit flag).
+  async mancoAssignEmber(id: string, actorId: string | null, consultantId: string, needsOnsite: boolean) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'assigned_ember', 'ember_loading',
+      { consultant_id: consultantId, needs_onsite: needsOnsite, ember_applicable: true },
+      needsOnsite ? 'Flagged as possibly non-tech-savvy; may need a site visit.' : null,
+      `Load ${o.name} onto Ember360 and support their diagnostic.`)
+  },
+
+  // 3') ManCo marks Ember360 not applicable -> straight to welcome-party readiness.
+  async mancoSkipEmber(id: string, actorId: string | null) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'ember_skipped', 'welcome_ready',
+      { ember_applicable: false }, 'Ember360 not applicable for this beneficiary.', null)
+  },
+
+  // 4) Consultant uploads the Ember360 report + Drive folder, hands back to ManCo.
+  async consultantEmberDone(id: string, actorId: string | null, driveUrl: string | null, reportUrl: string | null) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'ember_uploaded', 'ember_review',
+      { drive_folder_url: driveUrl, ember360_report_url: reportUrl },
+      'Drive folder created; Ember360 report uploaded.',
+      `Ember360 report ready to review: ${o.name}.`)
+  },
+
+  // 5) ManCo reviews the report.
+  async mancoEmberApprove(id: string, actorId: string | null) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'ember_approved', 'welcome_ready', {}, 'Ember360 report approved.', null)
+  },
+  async mancoEmberReject(id: string, actorId: string | null, reason: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'ember_rejected', 'ember_revision', {}, `Report returned: ${reason}`, `Ember360 report needs revision: ${o.name}. ${reason}`)
+  },
+  async consultantEmberRevised(id: string, actorId: string | null, note: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'ember_revised', 'ember_review', {}, note || 'Report revised.', `Revised Ember360 report ready to review: ${o.name}.`)
+  },
+
+  // 5) ManCo adds the beneficiary to a welcome party -> Aggregator/Sponsor owns it.
+  async mancoAddToWelcomeParty(id: string, actorId: string | null, partyId: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    if (LIVE) { try { await supabase!.from('welcome_party_invites').insert({ welcome_party_id: partyId, onboarding_id: id, status: 'invited' }) } catch { /* best-effort */ } }
+    else { db.welcomePartyInvites.push({ id: uid(), welcome_party_id: partyId, onboarding_id: id, status: 'invited', created_at: new Date().toISOString() }) }
+    await repo._onbApply(o, actorId, 'added_to_party', 'welcome_invited', { welcome_party_id: partyId }, 'Added to the welcome party list.', `${o.name} is on the welcome party list — the sponsor must send the comms.`)
+  },
+
+  // 6) Record that the sponsor sent the welcome-party comms (no status change).
+  async onbCommsSent(id: string, actorId: string | null) {
+    await repo._logOnb(id, actorId, 'comms_sent', 'Welcome-party comms + registration link sent to the beneficiary.')
+  },
+
+  // 7) Internal records welcome-party attendance -> moves or rolls the ticket.
+  async recordAttendance(id: string, actorId: string | null, present: boolean) {
+    const o = await repo._getOnb(id); if (!o) return
+    if (o.welcome_party_id) {
+      const at = new Date().toISOString(), st = present ? 'attended' : 'no_show'
+      if (LIVE) { try { await supabase!.from('welcome_party_invites').update({ status: st, recorded_by: actorId, recorded_at: at }).eq('welcome_party_id', o.welcome_party_id).eq('onboarding_id', id) } catch { /* best-effort */ } }
+      else { const inv = db.welcomePartyInvites.find(w => w.welcome_party_id === o.welcome_party_id && w.onboarding_id === id); if (inv) { inv.status = st as WelcomePartyInvite['status']; inv.recorded_by = actorId; inv.recorded_at = at } }
+    }
+    if (present) {
+      await repo._onbApply(o, actorId, 'attended', 'attended', { missed_welcome_parties: 0 }, 'Attended the welcome party.', `${o.name} attended — generate and send the SOW.`)
+    } else {
+      const missed = (o.missed_welcome_parties ?? 0) + 1
+      if (missed >= 2) await repo._onbApply(o, actorId, 'no_show', 'red_no_show', { missed_welcome_parties: missed }, 'Second consecutive no-show — now red.', `${o.name} missed two welcome parties — remove or request a site visit.`)
+      else await repo._onbApply(o, actorId, 'rolled_over', 'rolled_over', { missed_welcome_parties: missed, welcome_party_id: null }, 'Did not attend — rolled to next week.', `${o.name} was a no-show — re-add them to next week's party.`)
+    }
+  },
+
+  // 8a) ManCo sends the SOW; ticket waits on the beneficiary's signature.
+  async mancoSendSow(id: string, actorId: string | null, sowUrl: string | null) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'sow_sent', 'sow_sent', { sow_url: sowUrl ?? null, sow_sent_at: new Date().toISOString() }, 'Scope of Works sent to the beneficiary.', `SOW sent to ${o.name} — awaiting signature.`)
+  },
+
+  // 9a) SOW signed -> convert the ticket into a live beneficiary in Central.
+  async onbSowSigned(id: string, actorId: string | null, signedDate?: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    const signed = signedDate ?? new Date().toISOString().slice(0, 10)
+    if (LIVE) {
+      await supabase!.from('onboardings').update({ sow_signed_date: signed }).eq('id', id)
+      await supabase!.from('onboarding_events').insert({ onboarding_id: id, user_id: actorId, kind: 'sow_signed', text: 'Scope of Works signed.' })
+      await supabase!.rpc('app_convert_onboarding', { p_onboarding: id })
+      ping(); return
+    }
+    const benId = uid(), now = new Date().toISOString()
+    db.beneficiaries.push({
+      id: benId, name: o.name, sponsor_id: o.sponsor_id, budget: o.budget ?? null, industry: o.industry ?? null,
+      contact_person: o.contact_person ?? null, directors: [], stage: 'implementation', project_manager_id: o.manco_id ?? null,
+      ember360_report_url: o.ember360_report_url ?? null, missed_welcome_parties: o.missed_welcome_parties ?? 0,
+      sow_signed_date: signed, sow_url: o.sow_url ?? null, needs_onsite: o.needs_onsite ?? false,
+      drive_folder_url: o.drive_folder_url ?? null, lifecycle: 'active', cycle: 1, created_at: now,
+    } as Beneficiary)
+    db.benEvents.unshift({ id: uid(), beneficiary_id: benId, at: now, user_id: actorId, kind: 'loaded', text: 'Onboarded from the onboarding pipeline (SOW signed).' })
+    const i = db.onboardings.findIndex(x => x.id === id)
+    if (i >= 0) db.onboardings[i] = { ...db.onboardings[i], status: 'converted', converted_beneficiary_id: benId, sow_signed_date: signed, current_owner_id: null, last_action_at: now }
+    db.onboardingEvents.unshift({ id: uid(), onboarding_id: id, at: now, user_id: actorId, kind: 'sow_signed', text: 'Scope of Works signed.' })
+    db.onboardingEvents.unshift({ id: uid(), onboarding_id: id, at: now, user_id: actorId, kind: 'converted', to_status: 'converted', text: 'SOW signed — beneficiary created in Central.' })
+    ping()
+  },
+
+  // 8b) Sponsor decisions after two missed parties.
+  async onbWithdraw(id: string, actorId: string | null, reason: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'withdrawn', 'withdrawn', { withdrawn_reason: reason ?? null }, reason ? `Withdrawn: ${reason}` : 'Withdrawn.', null)
+  },
+  async onbRequestVisit(id: string, actorId: string | null, note: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'visit_requested', 'remediation', {}, note || 'Sponsor requested a site visit / follow-up call.', `${o.name}: sponsor requested a site visit — assign a consultant.`)
+  },
+  async onbAssignVisit(id: string, actorId: string | null, consultantId: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'visit_assigned', 'remediation_visit', { consultant_id: consultantId }, 'Assigned for a site visit / follow-up call.', `Site visit / call needed for ${o.name}.`)
+  },
+  async onbBackOnTrack(id: string, actorId: string | null, note: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'back_on_track', 'welcome_ready', { missed_welcome_parties: 0 }, note || 'Beneficiary re-engaged — ready for a welcome party.', `${o.name} is back on track — add them to a welcome party.`)
+  },
+
+  // 9b) Onboarding escalation (surfaces in the ManCo Escalations view).
+  async onbEscalate(id: string, actorId: string | null, mancoId: string, reason: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'escalated_manco', 'esc_manco', { manco_id: mancoId }, `Escalated: ${reason}`, `Onboarding escalation to review: ${o.name}.`)
+  },
+  async onbEscApprove(id: string, actorId: string | null, note: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'esc_approved', 'esc_sponsor', {}, note || 'Escalation approved — sent to the Aggregator/Sponsor.', `${o.name}: onboarding escalation now with the Aggregator/Sponsor.`)
+  },
+  async onbEscDecline(id: string, actorId: string | null, reason: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'esc_declined', 'remediation_visit', {}, `Declined: ${reason}`, `Escalation declined — keep working ${o.name}.`)
+  },
+  async onbEscReturn(id: string, actorId: string | null, note: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    await repo._onbApply(o, actorId, 'esc_returned', 'remediation_visit', {}, note || 'Returned by the Aggregator/Sponsor with guidance.', `${o.name}: escalation returned — continue the site-visit effort.`)
+  },
+
+  async addOnbNote(id: string, actorId: string | null, text: string) {
+    await repo._logOnb(id, actorId, 'note', text)
+  },
+
+  // Welcome party events.
+  async createWelcomeParty(input: { party_date: string; title?: string | null; notes?: string | null }, actorId: string | null) {
+    if (LIVE) { await supabase!.from('welcome_parties').insert({ party_date: input.party_date, title: input.title ?? null, notes: input.notes ?? null, created_by: actorId }); ping(); return }
+    db.welcomeParties.unshift({ id: uid(), party_date: input.party_date, title: input.title ?? null, notes: input.notes ?? null, created_by: actorId, created_at: new Date().toISOString() })
     ping()
   },
 }
