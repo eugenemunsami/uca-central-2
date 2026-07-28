@@ -6,6 +6,7 @@ import SetPassword from './pages/SetPassword'
 import Dashboard from './pages/Dashboard'
 import Beneficiaries from './pages/Beneficiaries'
 import BeneficiaryDetail from './pages/BeneficiaryDetail'
+import Onboarding from './pages/Onboarding'
 import MyWork from './pages/MyWork'
 import Huddle from './pages/Huddle'
 import Escalations from './pages/Escalations'
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/beneficiaries" element={<Beneficiaries />} />
         <Route path="/beneficiaries/:id" element={<BeneficiaryDetail />} />
+        <Route path="/onboarding" element={<Onboarding />} />
         <Route path="/my-work" element={<MyWork />} />
         <Route path="/huddle" element={<Huddle />} />
         <Route path="/escalations" element={<Escalations />} />

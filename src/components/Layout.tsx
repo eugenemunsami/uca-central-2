@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle,
+  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -10,6 +10,7 @@ import { Logo } from './ui'
 const nav = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['exco', 'manco', 'consultant'] },
   { to: '/beneficiaries', label: 'Beneficiaries', icon: Users, roles: ['exco', 'manco', 'consultant'] },
+  { to: '/onboarding', label: 'Onboarding', icon: Rocket, roles: ['exco', 'manco', 'consultant'] },
   { to: '/my-work', label: 'My work', icon: Briefcase, roles: ['exco', 'consultant', 'manco'] },
   { to: '/my-work', label: 'My work', icon: Briefcase, roles: ['external'] },
   { to: '/huddle', label: 'The Huddle', icon: CalendarDays, roles: ['exco', 'manco', 'consultant'] },

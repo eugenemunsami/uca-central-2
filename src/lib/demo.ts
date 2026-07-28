@@ -1,6 +1,7 @@
 import type {
   Aggregator, Beneficiary, BeneficiaryEvent, CatalogueItem, Comm, Escalation, EscalationEvent,
   Intervention, Notification, Profile, RagOverride, Sponsor, UserEvent, WeeklyUpdate,
+  Onboarding, OnboardingEvent, WelcomeParty, WelcomePartyInvite,
 } from './types'
 
 const now = new Date()
@@ -332,3 +333,63 @@ export const beneficiaryEvents: BeneficiaryEvent[] = [
 ]
 
 export const ragOverrides: RagOverride[] = []
+
+// ---- Onboarding pipeline (pre-SOW) ----
+export const welcomeParties: WelcomeParty[] = [
+  { id: 'wp-1', party_date: day(3), title: 'Welcome Party — this week', notes: null, created_by: 'u-shaun', created_at: iso(5) },
+  { id: 'wp-2', party_date: day(10), title: 'Welcome Party — next week', notes: null, created_by: 'u-shaun', created_at: iso(2) },
+]
+
+export const onboardings: Onboarding[] = [
+  {
+    id: 'onb-1', name: 'Mbali Textiles', sponsor_id: 'sp-stdbank', budget: 150000,
+    industry: 'Textiles', contact_person: 'Mbali Ndlovu', contact_email: 'mbali@mbalitextiles.co.za', contact_phone: '+27 82 111 2233',
+    status: 'invoice_requested', current_owner_role: 'exco', current_owner_id: 'u-hiten', exco_id: 'u-hiten', created_by: 'u-hiten',
+    needs_onsite: false, ember_applicable: true, missed_welcome_parties: 0, participants: ['u-hiten'],
+    created_at: iso(2), last_action_at: iso(2),
+  },
+  {
+    id: 'onb-2', name: 'Sizwe Auto', sponsor_id: 'sp-absa', budget: 200000, industry: 'Automotive', contact_person: 'Sizwe Dube',
+    status: 'with_manco', current_owner_role: 'manco', current_owner_id: 'u-rinaldo',
+    exco_id: 'u-jameel', manco_id: 'u-rinaldo', invoice_number: 'INV-2041', created_by: 'u-jameel',
+    needs_onsite: false, ember_applicable: true, missed_welcome_parties: 0, participants: ['u-jameel', 'u-rinaldo'],
+    created_at: iso(6), last_action_at: iso(1),
+  },
+  {
+    id: 'onb-3', name: 'Palesa Bakery', sponsor_id: 'sp-sasol', budget: 90000, industry: 'Food & Beverage', contact_person: 'Palesa Mokoena',
+    status: 'ember_loading', current_owner_role: 'consultant', current_owner_id: 'u-keanan',
+    exco_id: 'u-hiten', manco_id: 'u-eugene', consultant_id: 'u-keanan', invoice_number: 'INV-2039', created_by: 'u-hiten',
+    needs_onsite: true, ember_applicable: true, missed_welcome_parties: 0, participants: ['u-hiten', 'u-eugene', 'u-keanan'],
+    created_at: iso(9), last_action_at: iso(2),
+  },
+  {
+    id: 'onb-4', name: 'Thandi Cosmetics', sponsor_id: 'sp-stdbank', budget: 120000, industry: 'Cosmetics', contact_person: 'Thandi Zulu',
+    status: 'welcome_invited', current_owner_role: 'external', current_owner_id: null,
+    exco_id: 'u-jameel', manco_id: 'u-shaun', consultant_id: 'u-keanan', invoice_number: 'INV-2035',
+    ember_applicable: true, ember360_report_url: 'https://drive.google.com/thandi/ember', drive_folder_url: 'https://drive.google.com/thandi',
+    welcome_party_id: 'wp-1', needs_onsite: false, missed_welcome_parties: 0, participants: ['u-jameel', 'u-shaun', 'u-keanan'], created_by: 'u-jameel',
+    created_at: iso(14), last_action_at: iso(1),
+  },
+  {
+    id: 'onb-5', name: 'Bongani Logistics', sponsor_id: 'sp-sasol', budget: 180000, industry: 'Logistics', contact_person: 'Bongani Khumalo',
+    status: 'red_no_show', current_owner_role: 'external', current_owner_id: null,
+    exco_id: 'u-hiten', manco_id: 'u-rinaldo', consultant_id: 'u-keanan', invoice_number: 'INV-2028',
+    ember_applicable: true, welcome_party_id: 'wp-1', needs_onsite: true, missed_welcome_parties: 2,
+    participants: ['u-hiten', 'u-rinaldo', 'u-keanan'], created_by: 'u-hiten',
+    created_at: iso(28), last_action_at: iso(3),
+  },
+]
+
+export const welcomePartyInvites: WelcomePartyInvite[] = [
+  { id: 'wpi-1', welcome_party_id: 'wp-1', onboarding_id: 'onb-4', status: 'invited', created_at: iso(1) },
+  { id: 'wpi-2', welcome_party_id: 'wp-1', onboarding_id: 'onb-5', status: 'no_show', recorded_by: 'u-shaun', recorded_at: iso(3), created_at: iso(10) },
+]
+
+export const onboardingEvents: OnboardingEvent[] = [
+  { id: 'oe-1', onboarding_id: 'onb-1', at: iso(2), user_id: 'u-hiten', kind: 'created', to_status: 'invoice_requested', text: 'Onboarding opened for Mbali Textiles.' },
+  { id: 'oe-2', onboarding_id: 'onb-2', at: iso(6), user_id: 'u-jameel', kind: 'created', to_status: 'invoice_requested', text: 'Onboarding opened for Sizwe Auto.' },
+  { id: 'oe-3', onboarding_id: 'onb-2', at: iso(1), user_id: 'u-jameel', kind: 'invoice_sent', from_status: 'invoice_requested', to_status: 'with_manco', to_owner_id: 'u-rinaldo', text: 'Invoice INV-2041 sent to the sponsor. Budget recorded.' },
+  { id: 'oe-4', onboarding_id: 'onb-3', at: iso(2), user_id: 'u-eugene', kind: 'assigned_ember', from_status: 'with_manco', to_status: 'ember_loading', to_owner_id: 'u-keanan', text: 'Flagged as possibly non-tech-savvy; may need a site visit.' },
+  { id: 'oe-5', onboarding_id: 'onb-4', at: iso(1), user_id: 'u-shaun', kind: 'added_to_party', from_status: 'welcome_ready', to_status: 'welcome_invited', text: 'Added to the welcome party list.' },
+  { id: 'oe-6', onboarding_id: 'onb-5', at: iso(3), user_id: 'u-shaun', kind: 'no_show', from_status: 'welcome_invited', to_status: 'red_no_show', text: 'Second consecutive no-show — now red.' },
+]

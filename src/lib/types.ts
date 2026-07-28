@@ -91,6 +91,7 @@ export interface Beneficiary {
   id: string
   name: string
   sponsor_id: string
+  budget?: number | null              // allocated budget, carried over from onboarding
   industry?: string | null
   contact_person?: string | null
   contact_email?: string | null
@@ -342,6 +343,7 @@ export type NotificationKind =
   | 'closeout_requested' | 'closeout_confirmed' | 'closeout_returned'
   | 'intervention_closed' | 'beneficiary_closeout_ready' | 'beneficiary_closeout_sent'
   | 'beneficiary_concluded' | 'beneficiary_returned' | 'sla_breach_internal' | 'delay_granted'
+  | 'onboarding'
 
 export interface Notification {
   id: string
@@ -414,4 +416,171 @@ export interface BeneficiaryView extends Beneficiary {
   pm_name: string | null
   next_action: string | null
   last_update_at: string | null
+}
+
+// ================= Onboarding (pre-SOW pipeline) =================
+// A self-contained ownership-baton ticket that runs from invoice request to
+// signed SOW, then CONVERTS into a Beneficiary. Owner moves Exco -> ManCo ->
+// Consultant -> Aggregator/Sponsor and back. During Sponsor-owned stages the
+// sponsor is the accountable owner but the action is recorded internally.
+export type OnbOwnerRole = 'exco' | 'manco' | 'consultant' | 'external'
+
+export type OnbStatus =
+  | 'invoice_requested' | 'with_manco' | 'ember_loading' | 'ember_review' | 'ember_revision'
+  | 'welcome_ready' | 'welcome_invited' | 'rolled_over' | 'attended' | 'sow_sent'
+  | 'red_no_show' | 'remediation' | 'remediation_visit' | 'esc_manco' | 'esc_sponsor'
+  | 'converted' | 'withdrawn'
+
+export const ONB_STATUS_LABEL: Record<OnbStatus, string> = {
+  invoice_requested: 'Invoice requested',
+  with_manco: 'With ManCo — intake',
+  ember_loading: 'Ember360 loading',
+  ember_review: 'Ember360 review',
+  ember_revision: 'Ember360 revision',
+  welcome_ready: 'Ready for welcome party',
+  welcome_invited: 'Welcome party invited',
+  rolled_over: 'Rolled over',
+  attended: 'Attended — SOW to send',
+  sow_sent: 'SOW sent · awaiting beneficiary',
+  red_no_show: 'Red — 2 parties missed',
+  remediation: 'Site visit requested',
+  remediation_visit: 'Site visit / call',
+  esc_manco: 'Escalation — with ManCo',
+  esc_sponsor: 'Escalation — with Aggregator/Sponsor',
+  converted: 'Converted to beneficiary',
+  withdrawn: 'Withdrawn',
+}
+
+// The role that owns (is accountable for) each status.
+export const ONB_STATUS_OWNER: Record<OnbStatus, OnbOwnerRole> = {
+  invoice_requested: 'exco', with_manco: 'manco', ember_loading: 'consultant',
+  ember_review: 'manco', ember_revision: 'consultant', welcome_ready: 'manco',
+  welcome_invited: 'external', rolled_over: 'external', attended: 'manco', sow_sent: 'manco',
+  red_no_show: 'external', remediation: 'manco', remediation_visit: 'consultant',
+  esc_manco: 'manco', esc_sponsor: 'external', converted: 'manco', withdrawn: 'manco',
+}
+
+export const ONB_OWNER_LABEL: Record<OnbOwnerRole, string> = {
+  exco: 'Exco', manco: 'ManCo', consultant: 'Consultant', external: 'Aggregator/Sponsor',
+}
+
+// Order active tickets are shown top-to-bottom (mirrors the baton flow).
+export const ONB_ACTIVE_ORDER: OnbStatus[] = [
+  'invoice_requested', 'with_manco', 'ember_loading', 'ember_review', 'ember_revision',
+  'welcome_ready', 'welcome_invited', 'rolled_over', 'attended', 'sow_sent',
+  'esc_manco', 'esc_sponsor', 'remediation', 'remediation_visit', 'red_no_show',
+]
+export const ONB_TERMINAL: OnbStatus[] = ['converted', 'withdrawn']
+export const ONB_ESC_STATUSES: OnbStatus[] = ['esc_manco', 'esc_sponsor']
+
+export interface WelcomeParty {
+  id: string
+  party_date: string
+  title?: string | null
+  notes?: string | null
+  created_by?: string | null
+  created_at: string
+}
+
+export interface WelcomePartyInvite {
+  id: string
+  welcome_party_id: string
+  onboarding_id: string
+  status: 'invited' | 'attended' | 'no_show'
+  recorded_by?: string | null
+  recorded_at?: string | null
+  created_at: string
+}
+
+export interface Onboarding {
+  id: string
+  name: string
+  sponsor_id: string
+  budget?: number | null
+  invoice_number?: string | null
+  industry?: string | null
+  contact_person?: string | null
+  contact_email?: string | null
+  contact_phone?: string | null
+  status: OnbStatus
+  current_owner_id?: string | null
+  current_owner_role: OnbOwnerRole
+  exco_id?: string | null
+  manco_id?: string | null
+  consultant_id?: string | null
+  needs_onsite: boolean
+  ember_applicable: boolean
+  ember360_report_url?: string | null
+  drive_folder_url?: string | null
+  sow_url?: string | null
+  sow_sent_at?: string | null
+  sow_signed_date?: string | null
+  welcome_party_id?: string | null
+  missed_welcome_parties: number
+  participants: string[]
+  withdrawn_reason?: string | null
+  converted_beneficiary_id?: string | null
+  created_by?: string | null
+  created_at: string
+  last_action_at: string
+}
+
+export type OnbEventKind =
+  | 'created' | 'invoice_sent' | 'assigned_ember' | 'ember_skipped' | 'ember_uploaded'
+  | 'ember_approved' | 'ember_rejected' | 'ember_revised' | 'added_to_party' | 'comms_sent'
+  | 'attended' | 'no_show' | 'rolled_over' | 'sow_sent' | 'sow_signed' | 'converted'
+  | 'withdrawn' | 'visit_requested' | 'visit_assigned' | 'back_on_track'
+  | 'escalated_manco' | 'esc_declined' | 'esc_approved' | 'esc_returned' | 'note'
+
+export const ONB_EVENT_LABEL: Record<OnbEventKind, string> = {
+  created: 'Onboarding ticket opened',
+  invoice_sent: 'Invoice sent · assigned to ManCo',
+  assigned_ember: 'Consultant assigned for Ember360',
+  ember_skipped: 'Ember360 marked not applicable',
+  ember_uploaded: 'Ember360 report uploaded',
+  ember_approved: 'Ember360 report approved',
+  ember_rejected: 'Ember360 report returned for revision',
+  ember_revised: 'Ember360 report revised',
+  added_to_party: 'Added to a welcome party',
+  comms_sent: 'Welcome-party comms sent to beneficiary',
+  attended: 'Attended the welcome party',
+  no_show: 'Did not attend the welcome party',
+  rolled_over: 'Rolled over to the next welcome party',
+  sow_sent: 'Scope of Works sent to beneficiary',
+  sow_signed: 'Scope of Works signed',
+  converted: 'Converted to a beneficiary in Central',
+  withdrawn: 'Beneficiary withdrawn',
+  visit_requested: 'Site visit / follow-up call requested',
+  visit_assigned: 'Site visit assigned to consultant',
+  back_on_track: 'Back on track — re-invited to a welcome party',
+  escalated_manco: 'Escalated to ManCo',
+  esc_declined: 'Escalation declined — back to consultant',
+  esc_approved: 'Escalation approved — to Aggregator/Sponsor',
+  esc_returned: 'Escalation returned by Aggregator/Sponsor',
+  note: 'Note added',
+}
+
+export interface OnboardingEvent {
+  id: string
+  onboarding_id: string
+  at: string
+  user_id?: string | null
+  kind: OnbEventKind
+  from_status?: OnbStatus | null
+  to_status?: OnbStatus | null
+  from_owner_id?: string | null
+  to_owner_id?: string | null
+  text?: string | null
+}
+
+export interface OnboardingView extends Onboarding {
+  sponsor_name: string
+  client_name: string        // aggregator name when present, else sponsor name
+  client_id: string
+  owner_name: string | null
+  owner_org: string | null
+  manco_name: string | null
+  consultant_name: string | null
+  welcome_party_date: string | null
+  is_red: boolean            // 2 consecutive missed welcome parties
 }
