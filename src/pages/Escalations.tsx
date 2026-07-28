@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { Flame, Lightbulb, Users } from 'lucide-react'
 import { useData } from '../lib/useData'
-import { ESC_STATUS_LABEL, type EscStatus } from '../lib/types'
+import { ESC_STATUS_LABEL, ONB_ESC_STATUSES, ONB_STATUS_LABEL, type EscStatus } from '../lib/types'
 import { Empty, Modal, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
+import OnboardingDetail, { OnbStatusPill } from '../components/OnboardingDetail'
 
 // Order active escalations move through the ownership baton; shown top-to-bottom.
 const ACTIVE_ORDER: EscStatus[] = [
@@ -19,13 +20,15 @@ const roleLabel: Record<string, string> = {
 const truncate = (s: string, n = 120) => (s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s)
 
 export default function Escalations() {
-  const { escalations, suggestions, loading } = useData()
+  const { escalations, suggestions, onboardings, loading } = useData()
   const [viewId, setViewId] = useState<string | null>(null)
+  const [onbId, setOnbId] = useState<string | null>(null)
 
   if (loading) return <div className="text-white/40">Loading...</div>
 
   const active = escalations.filter(e => e.status !== 'resolved')
   const resolved = escalations.filter(e => e.status === 'resolved')
+  const onbEscalations = onboardings.filter(o => ONB_ESC_STATUSES.includes(o.status))
 
   // newest action first within each status group
   const sortActive = (es: typeof active) =>
@@ -115,6 +118,34 @@ export default function Escalations() {
         )}
       </section>
 
+      {/* ---- Onboarding escalations (from the pre-SOW pipeline) ---- */}
+      {onbEscalations.length > 0 && (
+        <section className="space-y-2">
+          <div className="flex items-center gap-2">
+            <Flame size={16} className="text-flame" />
+            <h2 className="text-sm text-white">Onboarding escalations</h2>
+            <span className="rounded-full bg-flame/15 px-2 py-0.5 text-[11px] text-flame">{onbEscalations.length}</span>
+          </div>
+          {onbEscalations.map(o => (
+            <div key={o.id} className="card flex flex-wrap items-center justify-between gap-4 p-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-white">{o.name}</span>
+                  <span className="text-white/30">·</span>
+                  <span className="text-sm text-white/60">{o.client_name}</span>
+                  <OnbStatusPill status={o.status} />
+                </div>
+                <div className="mt-2 text-[11px] text-white/40">
+                  <span className="text-white/25">Onboarding · </span>{ONB_STATUS_LABEL[o.status]}
+                  <span className="text-white/25"> · last action</span> {timeAgo(o.last_action_at)}
+                </div>
+              </div>
+              <button className="btn-primary" onClick={() => setOnbId(o.id)}>View / act</button>
+            </div>
+          ))}
+        </section>
+      )}
+
       {/* ---- Resolved ---- */}
       {resolved.length > 0 && (
         <section className="space-y-2">
@@ -139,6 +170,9 @@ export default function Escalations() {
       {/* Detail / act modal */}
       <Modal open={Boolean(viewId)} onClose={() => setViewId(null)} title="Escalation" wide>
         {viewId && <EscalationDetail id={viewId} onClose={() => setViewId(null)} />}
+      </Modal>
+      <Modal open={Boolean(onbId)} onClose={() => setOnbId(null)} title="Onboarding ticket" wide>
+        {onbId && <OnboardingDetail id={onbId} onClose={() => setOnbId(null)} />}
       </Modal>
     </div>
   )
