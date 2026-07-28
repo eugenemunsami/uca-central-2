@@ -4,12 +4,18 @@ import { motion } from 'framer-motion'
 import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
-import { AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users } from 'lucide-react'
+import {
+  AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users, Rocket, CheckCircle2, Ban, CalendarDays,
+} from 'lucide-react'
 import { useData } from '../lib/useData'
 import { RAG_HEX } from '../lib/rag'
-import { FUNNEL_STAGES, STAGE_LABEL, type Rag } from '../lib/types'
-import { Empty, RagPill, StatCard, timeAgo } from '../components/ui'
+import {
+  FUNNEL_STAGES, STAGE_LABEL, ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL,
+  type Rag, type OnbOwnerRole, type OnboardingView, type WelcomeParty, type WelcomePartyInvite,
+} from '../lib/types'
+import { Empty, RagPill, StatCard, timeAgo, fmtDate } from '../components/ui'
 import { EscStatusPill } from '../components/EscalationDetail'
+import { OnbStatusPill } from '../components/OnboardingDetail'
 
 const tip = {
   contentStyle: { background: '#1A1A1A', border: '1px solid #3A3A3A', borderRadius: 8, fontSize: 12 },
@@ -17,9 +23,10 @@ const tip = {
 }
 
 export default function Dashboard() {
-  const { beneficiaries, interventions, escalations, people, loading } = useData()
+  const { beneficiaries, interventions, escalations, people, onboardings, welcomeParties, welcomePartyInvites, loading } = useData()
   const [tab, setTab] = useState('all')
   const [rag, setRag] = useState<'all' | Rag>('all')
+  const [view, setView] = useState<'delivery' | 'onboarding'>('delivery')
 
   // One tab per distinct sponsor/aggregator (grouped by client_name), with counts.
   const clientTabs = useMemo(() => {
@@ -74,19 +81,38 @@ export default function Dashboard() {
         <div>
           <h1 className="text-2xl text-white">Exco dashboard</h1>
           <p className="mt-1 text-sm text-white/40">
-            Every live beneficiary, scored against the playbook clocks.
+            {view === 'delivery'
+              ? 'Every live beneficiary, scored against the playbook clocks.'
+              : 'The onboarding pipeline at a glance — invoice request through to signed SOW.'}
           </p>
         </div>
-        <div className="flex gap-2">
-          <select className="input w-auto" value={rag} onChange={e => setRag(e.target.value as never)}>
-            <option value="all">All statuses</option>
-            <option value="red">Red only</option>
-            <option value="amber">Amber only</option>
-            <option value="green">Green only</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-lg bg-ink-800 p-1">
+            <button onClick={() => setView('delivery')}
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${view === 'delivery' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+              Delivery
+            </button>
+            <button onClick={() => setView('onboarding')}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${view === 'onboarding' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+              <Rocket size={14} /> Onboarding
+            </button>
+          </div>
+          {view === 'delivery' && (
+            <select className="input w-auto" value={rag} onChange={e => setRag(e.target.value as never)}>
+              <option value="all">All statuses</option>
+              <option value="red">Red only</option>
+              <option value="amber">Amber only</option>
+              <option value="green">Green only</option>
+            </select>
+          )}
         </div>
       </header>
 
+      {view === 'onboarding' && (
+        <OnboardingSummary onboardings={onboardings} welcomeParties={welcomeParties} welcomePartyInvites={welcomePartyInvites} />
+      )}
+
+      {view === 'delivery' && <>
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard label="Live beneficiaries" value={scoped.length} icon={<Users size={20} />}
           sub={`${interventions.filter(i => i.status !== 'completed').length} open interventions`} delay={0} />
@@ -235,6 +261,151 @@ export default function Dashboard() {
           </tbody>
         </table>
         {rows.length === 0 && <div className="p-6"><Empty text="Nothing matches these filters." /></div>}
+      </div>
+      </>}
+    </div>
+  )
+}
+
+const OWNER_HEX: Record<OnbOwnerRole, string> = {
+  exco: '#F5B942', manco: '#4C93E8', consultant: '#7F77DD', external: '#19A06E',
+}
+
+function OnboardingSummary({ onboardings, welcomeParties, welcomePartyInvites }: {
+  onboardings: OnboardingView[]
+  welcomeParties: WelcomeParty[]
+  welcomePartyInvites: WelcomePartyInvite[]
+}) {
+  const active = onboardings.filter(o => o.status !== 'converted' && o.status !== 'withdrawn')
+  const red = active.filter(o => o.is_red)
+  const converted = onboardings.filter(o => o.status === 'converted')
+  const withdrawn = onboardings.filter(o => o.status === 'withdrawn')
+
+  const byStage = ONB_ACTIVE_ORDER
+    .map(s => ({ stage: ONB_STATUS_LABEL[s], count: active.filter(o => o.status === s).length }))
+    .filter(d => d.count > 0)
+
+  const owners: OnbOwnerRole[] = ['exco', 'manco', 'consultant', 'external']
+  const byOwner = owners
+    .map(r => ({ role: r, label: ONB_OWNER_LABEL[r], count: active.filter(o => ONB_STATUS_OWNER[o.status] === r).length }))
+    .filter(d => d.count > 0)
+  const maxOwner = Math.max(1, ...byOwner.map(d => d.count))
+
+  const upcoming = [...welcomeParties]
+    .filter(w => w.party_date >= new Date().toISOString().slice(0, 10))
+    .sort((a, b) => a.party_date.localeCompare(b.party_date))
+    .slice(0, 4)
+
+  if (onboardings.length === 0) return <Empty text="No onboarding tickets yet." />
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-4">
+        <StatCard label="In the pipeline" value={active.length} icon={<Rocket size={20} />}
+          sub={`${onboardings.length} tickets in total`} delay={0} />
+        <StatCard label="At risk" value={red.length} accent={RAG_HEX.red} icon={<AlertTriangle size={20} />}
+          sub="2 welcome parties missed" delay={0.05} />
+        <StatCard label="Converted" value={converted.length} accent={RAG_HEX.green} icon={<CheckCircle2 size={20} />}
+          sub="SOW signed → in Central" delay={0.1} />
+        <StatCard label="Withdrawn" value={withdrawn.length} accent="#888780" icon={<Ban size={20} />}
+          sub="dropped out at onboarding" delay={0.15} />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+          className="card p-5 lg:col-span-1">
+          <div className="label mb-3">Where tickets sit</div>
+          {byOwner.length === 0 ? <Empty text="Nothing active." /> : (
+            <div className="space-y-3">
+              {byOwner.map(d => (
+                <div key={d.role}>
+                  <div className="mb-1 flex justify-between text-xs">
+                    <span className="text-white/60">{d.label}</span>
+                    <span className="text-white/40">{d.count}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-ink-700">
+                    <div className="h-2 rounded-full" style={{ width: `${(d.count / maxOwner) * 100}%`, background: OWNER_HEX[d.role] }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+          className="card p-5 lg:col-span-2">
+          <div className="label mb-2">Pipeline by stage</div>
+          {byStage.length === 0 ? <Empty text="Nothing active." /> : (
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={byStage} layout="vertical" margin={{ left: 12, right: 16 }}>
+                <XAxis type="number" hide allowDecimals={false} />
+                <YAxis type="category" dataKey="stage" width={150} tickLine={false} axisLine={false}
+                  tick={{ fill: '#ffffff66', fontSize: 11 }} />
+                <Tooltip {...tip} cursor={{ fill: '#ffffff08' }} />
+                <Bar dataKey="count" fill="#9FD150" radius={[0, 4, 4, 0]} animationDuration={900} barSize={13} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </motion.div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+          className="card p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <CalendarDays size={16} className="text-lime" />
+            <span className="text-sm text-white">Upcoming welcome parties</span>
+          </div>
+          {upcoming.length === 0 ? <Empty text="No welcome parties scheduled." /> : (
+            <div className="space-y-2">
+              {upcoming.map(w => {
+                const inv = welcomePartyInvites.filter(i => i.welcome_party_id === w.id)
+                return (
+                  <div key={w.id} className="flex items-center justify-between rounded-lg bg-ink-800 px-3 py-2.5">
+                    <div>
+                      <div className="text-sm text-white">{fmtDate(w.party_date)}</div>
+                      {w.title && <div className="text-[11px] text-white/35">{w.title}</div>}
+                    </div>
+                    <div className="text-[11px] text-white/40">
+                      {inv.length} invited · {inv.filter(i => i.status === 'attended').length} attended · {inv.filter(i => i.status === 'no_show').length} no-show
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+          className={`card p-5 ${red.length ? 'border-flame/40' : ''}`}>
+          <div className="mb-3 flex items-center gap-2">
+            <AlertTriangle size={16} className={red.length ? 'text-flame' : 'text-white/30'} />
+            <span className="text-sm text-white">Needs attention — {red.length}</span>
+          </div>
+          {red.length === 0 ? <Empty text="Nothing at risk. Good." /> : (
+            <div className="space-y-2">
+              {red.map(o => (
+                <Link key={o.id} to="/onboarding"
+                  className="flex items-center justify-between gap-3 rounded-lg bg-flame-soft px-3 py-2.5 transition-colors hover:bg-flame/20">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-white">{o.name}</div>
+                    <div className="text-[11px] text-white/40">{o.client_name} · {o.missed_welcome_parties} missed</div>
+                  </div>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <OnbStatusPill status={o.status} />
+                    <ArrowUpRight size={14} className="text-flame" />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      <div className="text-right">
+        <Link to="/onboarding" className="inline-flex items-center gap-1 text-sm text-lime hover:underline">
+          Open the Onboarding tab <ArrowUpRight size={14} />
+        </Link>
       </div>
     </div>
   )
