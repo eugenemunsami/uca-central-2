@@ -73,7 +73,7 @@ const blankForm = () => ({
   contact_person: '', contact_email: '', contact_phone: '',
   project_manager_id: '',
   sow_signed_date: new Date().toISOString().slice(0, 10),
-  ember360_report_url: '', expected_completion: '', needs_onsite: false,
+  ember360_report_url: '', drive_folder_url: '', expected_completion: '', needs_onsite: false,
 })
 
 export default function Beneficiaries() {
@@ -164,6 +164,7 @@ export default function Beneficiaries() {
       directors: cleanDirectors,
       sow_signed_date: form.sow_signed_date || null,
       ember360_report_url: form.ember360_report_url || null,
+      drive_folder_url: form.drive_folder_url || null,
       expected_completion: form.expected_completion || null,
       project_manager_id: form.project_manager_id || null,
       needs_onsite: form.needs_onsite,
@@ -360,6 +361,10 @@ export default function Beneficiaries() {
               <Field label="Ember360 report link" hint="The diagnostic that the SOW was drafted from.">
                 <input className="input" placeholder="https://" value={form.ember360_report_url}
                   onChange={e => setForm({ ...form, ember360_report_url: e.target.value })} />
+              </Field>
+              <Field label="Beneficiary Google Drive folder" hint="The beneficiary's whole Drive folder — shared with consultants.">
+                <input className="input" placeholder="https://drive.google.com/…" value={form.drive_folder_url}
+                  onChange={e => setForm({ ...form, drive_folder_url: e.target.value })} />
               </Field>
               <Field label="Project manager">
                 <select className="input" value={form.project_manager_id} onChange={e => setForm({ ...form, project_manager_id: e.target.value })}>

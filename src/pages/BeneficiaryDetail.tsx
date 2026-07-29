@@ -116,13 +116,6 @@ export default function BeneficiaryDetail() {
               {b.client_name}{b.sponsor_name ? ` · ${b.sponsor_name}` : ''}
               {b.industry ? ` · ${b.industry}` : ''} · {STAGE_LABEL[b.stage]}
             </p>
-            {b.drive_folder_url && (
-              <a href={b.drive_folder_url} target="_blank" rel="noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-lime hover:text-white">
-                <FolderOpen size={12} /> Google Drive folder
-                <span className="text-white/30">· shared with consultants</span>
-              </a>
-            )}
           </div>
           <div className="flex gap-2">
             {canLogComms && (
@@ -163,6 +156,18 @@ export default function BeneficiaryDetail() {
           <Meta label="Last engagement" value={timeAgo(b.last_engagement_at)} sub={b.outstanding_items ?? undefined} />
           <Meta label="Expected completion" value={fmtDate(b.expected_completion)}
             sub={`${b.completed_count}/${b.intervention_count} interventions closed`} />
+          <div>
+            <div className="label">Google Drive</div>
+            {b.drive_folder_url ? (
+              <a href={b.drive_folder_url} target="_blank" rel="noreferrer"
+                className="mt-1 inline-flex items-center gap-1.5 text-sm text-lime hover:text-white">
+                <FolderOpen size={13} /> Open folder
+              </a>
+            ) : (
+              <div className="mt-1 text-white/40">{can('manage') ? 'Not linked — add via Edit' : 'Not linked yet'}</div>
+            )}
+            <div className="mt-0.5 text-[11px] text-white/30">Shared with consultants</div>
+          </div>
         </div>
 
         {b.directors && b.directors.length > 0 && (
