@@ -8,7 +8,7 @@ import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
 import {
-  ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL, ONB_EVENT_LABEL, ONB_TERMINAL,
+  ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL, ONB_EVENT_LABEL, ONB_TERMINAL, companyKey,
   type OnbStatus,
 } from '../lib/types'
 import { Empty, Field, fmtDate } from './ui'
@@ -41,7 +41,7 @@ type FormKind =
   | 'back_on_track' | 'escalate' | 'esc_approve' | 'esc_decline' | 'esc_return'
 
 export default function OnboardingDetail({ id, onClose }: { id: string; onClose?: () => void }) {
-  const { onboardings, onboardingEvents, welcomeParties, people } = useData()
+  const { onboardings, onboardingEvents, welcomeParties, people, beneficiaries } = useData()
   const { user } = useAuth()
   const [form, setForm] = useState<FormKind>(null)
   const [a, setA] = useState('')       // primary text
@@ -81,7 +81,7 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
       case 'ember_revised': await repo.consultantEmberRevised(id, user.id, a); break
       case 'add_party': await repo.mancoAddToWelcomeParty(id, user.id, target); break
       case 'send_sow': await repo.mancoSendSow(id, user.id, a || null); break
-      case 'sow_signed': await repo.onbSowSigned(id, user.id, a || undefined); break
+      case 'sow_signed': await repo.onbSowSigned(id, user.id, a || undefined, target || null); break
       case 'withdraw': await repo.onbWithdraw(id, user.id, a); break
       case 'request_visit': await repo.onbRequestVisit(id, user.id, a); break
       case 'assign_visit': await repo.onbAssignVisit(id, user.id, target); break
@@ -266,7 +266,24 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
             <Field label="Signed SOW / document URL (optional)"><input className="input" value={a} onChange={e => setA(e.target.value)} placeholder="https://…" /></Field>
           )}
           {form === 'sow_signed' && (
-            <Field label="Date signed (optional — defaults to today)"><input className="input" type="date" value={a} onChange={e => setA(e.target.value)} /></Field>
+            <>
+              <Field label="Date signed (optional — defaults to today)"><input className="input" type="date" value={a} onChange={e => setA(e.target.value)} /></Field>
+              <Field label="Beneficiary" hint="Attach this invoice to an existing beneficiary if it's the same business funded by another sponsor/invoice; otherwise it becomes a new one.">
+                <select className="input" value={target} onChange={e => setTarget(e.target.value)}>
+                  <option value="">Create a new beneficiary</option>
+                  {beneficiaries
+                    .filter(x => companyKey(x) === x.id && x.lifecycle !== 'archived')
+                    .sort((p, q) =>
+                      (p.sponsor_id === o.sponsor_id ? 0 : 1) - (q.sponsor_id === o.sponsor_id ? 0 : 1) ||
+                      p.name.localeCompare(q.name))
+                    .map(x => (
+                      <option key={x.id} value={x.id}>
+                        Attach to: {x.name}{x.sponsor_name ? ` — ${x.sponsor_name}` : ''}{x.invoice_number ? ` (${x.invoice_number})` : ''}
+                      </option>
+                    ))}
+                </select>
+              </Field>
+            </>
           )}
           {(form === 'note' || form === 'ember_reject' || form === 'ember_revised' || form === 'withdraw'
             || form === 'request_visit' || form === 'back_on_track' || form === 'escalate'
