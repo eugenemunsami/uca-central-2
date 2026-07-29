@@ -91,6 +91,11 @@ export interface Beneficiary {
   id: string
   name: string
   sponsor_id: string
+  // A real beneficiary (company) can be funded by several sponsors/invoices. Each row is one
+  // funding line; rows sharing a company_id are the same company. Null company_id = a company of
+  // one (its effective company key is its own id). invoice_number ties the line to its onboarding.
+  company_id?: string | null
+  invoice_number?: string | null
   budget?: number | null              // allocated budget, carried over from onboarding
   industry?: string | null
   contact_person?: string | null
@@ -417,6 +422,10 @@ export interface BeneficiaryView extends Beneficiary {
   next_action: string | null
   last_update_at: string | null
 }
+
+// A real beneficiary (company) may span several funding lines. Rows sharing this key are one
+// beneficiary; a line with no company_id is a company of one, keyed by its own id.
+export const companyKey = (b: { id: string; company_id?: string | null }) => b.company_id ?? b.id
 
 // ================= Onboarding (pre-SOW pipeline) =================
 // A self-contained ownership-baton ticket that runs from invoice request to
