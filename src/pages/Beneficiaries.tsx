@@ -5,9 +5,65 @@ import { Download, Plus, Search, Trash2, Upload, RefreshCw } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
-import { LIFECYCLE_LABEL, STAGE_LABEL, type Director } from '../lib/types'
+import { LIFECYCLE_LABEL, STAGE_LABEL, companyKey, type BeneLifecycle, type BeneficiaryView, type Director, type Rag } from '../lib/types'
+import { worst } from '../lib/rag'
 import { downloadTemplate, parseWorkbook, type ParsedRow } from '../lib/bulkOnboard'
 import { Empty, Field, Modal, RagPill, timeAgo } from '../components/ui'
+
+const uniq = (xs: (string | null | undefined)[]) =>
+  Array.from(new Set(xs.filter(Boolean) as string[]))
+
+// A card on the list is either one funding line (managers/exco see lines separately) or a whole
+// beneficiary — all its funding lines collapsed into one (what the consultant sees).
+type BenCard = {
+  key: string
+  to: string
+  name: string
+  subtitle: string
+  rag: Rag
+  reason: string | null
+  lifecycle: BeneLifecycle
+  cycle: number
+  intervention_count: number
+  completed_count: number
+  stageLabel: string
+  pm_name: string | null
+  last_engagement_at: string | null
+  badges: string[]
+  archived?: BeneficiaryView
+}
+
+function lineCard(b: BeneficiaryView, lineCount: number): BenCard {
+  return {
+    key: b.id, to: `/beneficiaries/${b.id}`, name: b.name,
+    subtitle: [b.sponsor_name ?? b.client_name, b.aggregator_name].filter(Boolean).join(' · '),
+    rag: b.rag, reason: b.escalation_reason, lifecycle: b.lifecycle, cycle: b.cycle,
+    intervention_count: b.intervention_count, completed_count: b.completed_count,
+    stageLabel: STAGE_LABEL[b.stage], pm_name: b.pm_name, last_engagement_at: b.last_engagement_at ?? null,
+    badges: [b.invoice_number, lineCount > 1 ? `1 of ${lineCount} lines` : null].filter(Boolean) as string[],
+    archived: b.lifecycle === 'archived' ? b : undefined,
+  }
+}
+
+// Collapse all funding lines of one company into a single consultant-facing card.
+function companyCard(lines: BeneficiaryView[]): BenCard {
+  const primary = lines.find(l => companyKey(l) === l.id) ?? lines[0]
+  const sponsors = uniq(lines.map(l => l.sponsor_name ?? l.client_name))
+  const aggs = uniq(lines.map(l => l.aggregator_name))
+  const sponsorLabel = sponsors.length <= 2 ? sponsors.join(', ') : `${sponsors.length} sponsors`
+  const engaged = lines.map(l => l.last_engagement_at).filter((x): x is string => !!x).sort()
+  return {
+    key: companyKey(primary), to: `/beneficiaries/${primary.id}?company=1`, name: primary.name,
+    subtitle: [sponsorLabel, aggs.join(', ')].filter(Boolean).join(' · '),
+    rag: worst(lines.map(l => l.rag)), reason: lines.map(l => l.escalation_reason).find(Boolean) ?? null,
+    lifecycle: primary.lifecycle, cycle: primary.cycle,
+    intervention_count: lines.reduce((s, l) => s + l.intervention_count, 0),
+    completed_count: lines.reduce((s, l) => s + l.completed_count, 0),
+    stageLabel: STAGE_LABEL[primary.stage], pm_name: primary.pm_name,
+    last_engagement_at: engaged.length ? engaged[engaged.length - 1] : null,
+    badges: lines.length > 1 ? [`${lines.length} funding lines`] : (primary.invoice_number ? [primary.invoice_number] : []),
+  }
+}
 
 type DirectorRow = { name: string; email: string; phone: string }
 const emptyDirector = (): DirectorRow => ({ name: '', email: '', phone: '' })
@@ -69,6 +125,20 @@ export default function Beneficiaries() {
         : (b.lifecycle !== 'archived' && b.lifecycle !== 'concluded')  // consultants don't see concluded
     return matchesQ && matchesSponsor && matchesView
   })
+
+  // Managers/Exco see each funding line as its own card; consultants see one card per beneficiary
+  // (all its funding lines collapsed), regardless of how many sponsors fund it.
+  const isManager = can('manage')
+  const lineCounts = new Map<string, number>()
+  beneficiaries.forEach(b => lineCounts.set(companyKey(b), (lineCounts.get(companyKey(b)) ?? 0) + 1))
+  let cards: BenCard[]
+  if (isManager) {
+    cards = visible.map(b => lineCard(b, lineCounts.get(companyKey(b)) ?? 1))
+  } else {
+    const groups = new Map<string, BeneficiaryView[]>()
+    visible.forEach(b => { const k = companyKey(b); groups.set(k, [...(groups.get(k) ?? []), b]) })
+    cards = Array.from(groups.values()).map(companyCard)
+  }
 
   const readyRows = rows.filter(r => r.errors.length === 0)
 
@@ -158,48 +228,53 @@ export default function Beneficiaries() {
       </header>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visible.map((b, i) => (
-          <motion.div key={b.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        {cards.map((c, i) => (
+          <motion.div key={c.key} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.04 }}>
-            <Link to={`/beneficiaries/${b.id}`} className="card card-hover block p-5">
+            <Link to={c.to} className="card card-hover block p-5">
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="text-white">{b.name}</div>
-                  <div className="mt-0.5 text-xs text-white/35">
-                    {b.sponsor_name ?? b.client_name}{b.aggregator_name ? ` · ${b.aggregator_name}` : ''}
+                  <div className="text-white">{c.name}</div>
+                  <div className="mt-0.5 text-xs text-white/35">{c.subtitle}</div>
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    {c.lifecycle !== 'active' && (
+                      <span className="inline-block rounded-full bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
+                        {LIFECYCLE_LABEL[c.lifecycle]}{c.cycle > 1 ? ` · cycle ${c.cycle}` : ''}
+                      </span>
+                    )}
+                    {c.badges.map(bd => (
+                      <span key={bd} className="inline-block rounded-full bg-lime/10 px-2 py-0.5 text-[10px] uppercase tracking-wider text-lime/80">
+                        {bd}
+                      </span>
+                    ))}
                   </div>
-                  {b.lifecycle !== 'active' && (
-                    <span className="mt-1.5 inline-block rounded-full bg-white/5 px-2 py-0.5 text-[10px] uppercase tracking-wider text-white/50">
-                      {LIFECYCLE_LABEL[b.lifecycle]}{b.cycle > 1 ? ` · cycle ${b.cycle}` : ''}
-                    </span>
-                  )}
                 </div>
-                <RagPill rag={b.rag} reason={b.escalation_reason} />
+                <RagPill rag={c.rag} reason={c.reason} />
               </div>
 
               <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
                 <motion.div className="h-full rounded-full bg-jade"
                   initial={{ width: 0 }}
-                  animate={{ width: `${b.intervention_count ? (b.completed_count / b.intervention_count) * 100 : 0}%` }}
+                  animate={{ width: `${c.intervention_count ? (c.completed_count / c.intervention_count) * 100 : 0}%` }}
                   transition={{ duration: 0.8, delay: 0.2 }} />
               </div>
               <div className="mt-2 flex justify-between text-[11px] text-white/35">
-                <span>{STAGE_LABEL[b.stage]}</span>
-                <span>{b.completed_count}/{b.intervention_count} complete</span>
+                <span>{c.stageLabel}</span>
+                <span>{c.completed_count}/{c.intervention_count} complete</span>
               </div>
 
               <div className="mt-4 flex justify-between border-t border-ink-600 pt-3 text-[11px] text-white/40">
-                <span>PM · {b.pm_name ?? 'unassigned'}</span>
-                <span>Engaged {timeAgo(b.last_engagement_at)}</span>
+                <span>PM · {c.pm_name ?? 'unassigned'}</span>
+                <span>Engaged {timeAgo(c.last_engagement_at)}</span>
               </div>
             </Link>
-            {b.lifecycle === 'archived' && can('manage') && (
+            {c.archived && can('manage') && (
               <button
                 className="btn-ghost mt-2 w-full justify-center"
                 onClick={() => {
                   const d = window.prompt('New SOW signed date for re-onboarding (YYYY-MM-DD):',
                     new Date().toISOString().slice(0, 10))
-                  if (d) repo.reonboardBeneficiary(b.id, user?.id ?? null, d)
+                  if (d && c.archived) repo.reonboardBeneficiary(c.archived.id, user?.id ?? null, d)
                 }}>
                 <RefreshCw size={14} /> Re-onboard (new SOW)
               </button>
@@ -207,7 +282,7 @@ export default function Beneficiaries() {
           </motion.div>
         ))}
       </div>
-      {visible.length === 0 && <Empty text={view === 'archived' ? 'No archived beneficiaries.' : 'No beneficiaries match those filters.'} />}
+      {cards.length === 0 && <Empty text={view === 'archived' ? 'No archived beneficiaries.' : 'No beneficiaries match those filters.'} />}
 
       <Modal open={open} onClose={() => { setOpen(false); resetModal() }} title="Load a signed beneficiary" wide>
         <div className="mb-5 inline-flex rounded-lg border border-ink-600 p-1">
