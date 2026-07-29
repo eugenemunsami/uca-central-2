@@ -3,8 +3,8 @@ import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AlertTriangle, ArrowLeft, Ban, CalendarClock, CheckCircle2, Clock, CornerUpLeft, Download,
-  FileText, FolderOpen, Mail, MapPin, Pencil, Phone, Plus, MessageSquare, ShieldCheck,
-  StickyNote, Trash2, Users,
+  FileText, FolderOpen, Link2, Mail, MapPin, Pencil, Phone, Plus, MessageSquare, ShieldCheck,
+  StickyNote, Trash2, Unlink, Users,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
@@ -13,7 +13,7 @@ import { RAG_HEX, RAG_LABEL } from '../lib/rag'
 import { categoryTint } from '../lib/palette'
 import { openEvidencePack } from '../lib/evidencePack'
 import {
-  BEN_EVENT_LABEL, LIFECYCLE_LABEL, STAGE_LABEL, STATUS_LABEL,
+  BEN_EVENT_LABEL, LIFECYCLE_LABEL, STAGE_LABEL, STATUS_LABEL, companyKey,
   type Beneficiary, type BeneficiaryEvent, type BeneficiaryView, type Channel, type Director,
   type InterventionView, type IvStatus, type Profile, type Rag, type RagOverride, type WeeklyUpdate,
 } from '../lib/types'
@@ -30,8 +30,24 @@ export default function BeneficiaryDetail() {
   const { user, can } = useAuth()
 
   const b = beneficiaries.find(x => x.id === id)
-  const ivs = useMemo(() => interventions.filter(i => i.beneficiary_id === id), [interventions, id])
+  // A beneficiary can span several funding lines (one per sponsor/invoice). Consultants see the whole
+  // company — every line's interventions together; ManCo/Exco see just this line, lines shown separately.
+  const aggregate = !can('manage')
+  const siblings = useMemo(
+    () => (b ? beneficiaries.filter(x => companyKey(x) === companyKey(b)) : []),
+    [beneficiaries, b])
+  const siblingIds = useMemo(() => new Set(siblings.map(s => s.id)), [siblings])
+  const ivs = useMemo(
+    () => interventions.filter(i => aggregate ? siblingIds.has(i.beneficiary_id) : i.beneficiary_id === id),
+    [interventions, id, aggregate, siblingIds])
+  // Funder label per line, for tagging interventions when several lines are shown together.
+  const funderOf = (benId: string) => {
+    const s = siblings.find(x => x.id === benId)
+    return s ? [s.invoice_number, s.sponsor_name ?? s.client_name].filter(Boolean).join(' · ') : null
+  }
   const [selected, setSelected] = useState<string | null>(null)
+  const [linkOpen, setLinkOpen] = useState(false)
+  const [linkTarget, setLinkTarget] = useState('')
   const [addIv, setAddIv] = useState(false)
   const [logComm, setLogComm] = useState(false)
   const [logCommIv, setLogCommIv] = useState<string | null>(null)
@@ -174,6 +190,83 @@ export default function BeneficiaryDetail() {
 
       </header>
 
+      {(siblings.length > 1 || can('manage')) && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="label">Funding lines{siblings.length > 1 ? ` · ${siblings.length}` : ''}</div>
+            {can('manage') && (
+              <button className="btn-ghost text-xs" onClick={() => { setLinkTarget(''); setLinkOpen(true) }}>
+                <Link2 size={13} /> Link to another beneficiary
+              </button>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-white/35">
+            Each line is one sponsor / invoice. Consultants see every line together as one beneficiary; funders see them separately.
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            {siblings.map(s => {
+              const here = s.id === b.id
+              return (
+                <div key={s.id} className={`rounded-xl border p-3 ${here ? 'border-lime/40 bg-lime/5' : 'border-ink-600'}`}>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm text-white/90">{s.name}{here ? ' · this line' : ''}</div>
+                      <div className="mt-0.5 text-[11px] text-white/40">
+                        {[s.sponsor_name ?? s.client_name, s.invoice_number].filter(Boolean).join(' · ') || '—'}
+                      </div>
+                    </div>
+                    <RagPill rag={s.rag} reason={s.escalation_reason} />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-white/40">
+                    {s.budget != null && <span>Budget · R{Number(s.budget).toLocaleString()}</span>}
+                    <span>SOW · {s.sow_signed_date ? fmtDate(s.sow_signed_date) : '—'}</span>
+                    <span>{STAGE_LABEL[s.stage]}</span>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    {!here && <Link to={`/beneficiaries/${s.id}`} className="btn-ghost px-2 py-1 text-[11px]">Open line</Link>}
+                    {can('manage') && companyKey(s) !== s.id && (
+                      <button className="btn-ghost px-2 py-1 text-[11px]"
+                        onClick={() => repo.linkBeneficiary(s.id, null, user?.id ?? null)}>
+                        <Unlink size={12} /> Split out
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      <Modal open={linkOpen} onClose={() => setLinkOpen(false)} title="Link to another beneficiary">
+        <p className="mb-4 text-sm text-white/50">
+          Fold <span className="text-white/80">{b.name}</span>{b.invoice_number ? ` (${b.invoice_number})` : ''} into another
+          beneficiary so both become funding lines of one company. Consultants will see a single card; funders keep separate lines.
+        </p>
+        <Field label="Existing beneficiary">
+          <select className="input" value={linkTarget} onChange={e => setLinkTarget(e.target.value)}>
+            <option value="">Select a beneficiary…</option>
+            {beneficiaries
+              .filter(x => companyKey(x) === x.id && companyKey(x) !== companyKey(b) && x.lifecycle !== 'archived')
+              .sort((a, z) => a.name.localeCompare(z.name))
+              .map(t => (
+                <option key={t.id} value={t.id}>
+                  {t.name}{t.sponsor_name ? ` — ${t.sponsor_name}` : ''}{t.invoice_number ? ` (${t.invoice_number})` : ''}
+                </option>
+              ))}
+          </select>
+        </Field>
+        <div className="mt-5 flex justify-end gap-2">
+          <button className="btn-ghost" onClick={() => setLinkOpen(false)}>Cancel</button>
+          <button className="btn-primary" disabled={!linkTarget}
+            onClick={() => {
+              const t = beneficiaries.find(x => x.id === linkTarget)
+              if (t) repo.linkBeneficiary(b.id, companyKey(t), user?.id ?? null)
+              setLinkOpen(false)
+            }}>Link beneficiary</button>
+        </div>
+      </Modal>
+
       <div className="grid gap-6 lg:grid-cols-[340px_1fr]">
         <div className="space-y-3">
           <div className="label">Interventions</div>
@@ -190,6 +283,11 @@ export default function BeneficiaryDetail() {
                     <div className="mt-0.5 text-[11px]" style={{ color: tint.text }}>
                       {i.category}{i.cancelled ? ' · cancelled' : ''}
                     </div>
+                    {aggregate && siblings.length > 1 && funderOf(i.beneficiary_id) && (
+                      <div className="mt-1 inline-block rounded-full bg-black/20 px-1.5 py-0.5 text-[10px] text-white/50">
+                        {funderOf(i.beneficiary_id)}
+                      </div>
+                    )}
                   </div>
                   <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: RAG_HEX[i.rag] }} />
                 </div>
