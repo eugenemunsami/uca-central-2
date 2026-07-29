@@ -792,6 +792,27 @@ export const repo = {
     ping()
   },
 
+  // Manually link a funding line into an existing beneficiary's company (companyKey = the target's
+  // effective company key), or split it back out (companyKey = null). Any rows already grouped under
+  // benId are re-pointed too, so a company always stays a flat group rather than a chain.
+  async linkBeneficiary(benId: string, companyKey: string | null, userId: string | null) {
+    const note = companyKey
+      ? 'Linked as another funding line of the same beneficiary.'
+      : 'Split out into its own beneficiary.'
+    if (LIVE) {
+      await supabase!.from('beneficiaries').update({ company_id: companyKey }).eq('id', benId)
+      if (companyKey) await supabase!.from('beneficiaries').update({ company_id: companyKey }).eq('company_id', benId)
+      try { await supabase!.rpc('app_log_ben_event', { p_ben: benId, p_user: userId, p_kind: 'edited', p_text: note }) } catch { /* best-effort */ }
+      ping(); return
+    }
+    db.beneficiaries.forEach((x, i) => {
+      if (x.id === benId) db.beneficiaries[i] = { ...x, company_id: companyKey }
+      else if (companyKey && x.company_id === benId) db.beneficiaries[i] = { ...x, company_id: companyKey }
+    })
+    pushBenEvent(benId, userId, 'edited', note)
+    ping()
+  },
+
   async addWeeklyUpdate(u: Omit<WeeklyUpdate, 'id' | 'created_at'>) {
     if (LIVE) { await supabase!.from('weekly_updates').insert(u); return }
     db.updates.unshift({ ...u, id: uid(), created_at: new Date().toISOString() })
@@ -1489,18 +1510,25 @@ export const repo = {
   },
 
   // 9a) SOW signed -> convert the ticket into a live beneficiary in Central.
-  async onbSowSigned(id: string, actorId: string | null, signedDate?: string) {
+  // attachTo: an existing company key to fold this new funding line into (so a company funded by
+  // several sponsors/invoices stays a single card for the consultant). Null = its own beneficiary.
+  async onbSowSigned(id: string, actorId: string | null, signedDate?: string, attachTo?: string | null) {
     const o = await repo._getOnb(id); if (!o) return
     const signed = signedDate ?? new Date().toISOString().slice(0, 10)
     if (LIVE) {
       await supabase!.from('onboardings').update({ sow_signed_date: signed }).eq('id', id)
       await supabase!.from('onboarding_events').insert({ onboarding_id: id, user_id: actorId, kind: 'sow_signed', text: 'Scope of Works signed.' })
-      await supabase!.rpc('app_convert_onboarding', { p_onboarding: id })
+      const { data: newBenId } = await supabase!.rpc('app_convert_onboarding', { p_onboarding: id })
+      if (attachTo && newBenId) {
+        await supabase!.from('beneficiaries').update({ company_id: attachTo }).eq('id', newBenId as string)
+        try { await supabase!.rpc('app_log_ben_event', { p_ben: newBenId, p_user: actorId, p_kind: 'edited', p_text: 'Linked as another funding line of an existing beneficiary.' }) } catch { /* best-effort */ }
+      }
       ping(); return
     }
     const benId = uid(), now = new Date().toISOString()
     db.beneficiaries.push({
-      id: benId, name: o.name, sponsor_id: o.sponsor_id, budget: o.budget ?? null, industry: o.industry ?? null,
+      id: benId, name: o.name, sponsor_id: o.sponsor_id, budget: o.budget ?? null,
+      invoice_number: o.invoice_number ?? null, company_id: attachTo ?? null, industry: o.industry ?? null,
       contact_person: o.contact_person ?? null, directors: [], stage: 'implementation', project_manager_id: o.manco_id ?? null,
       ember360_report_url: o.ember360_report_url ?? null, missed_welcome_parties: o.missed_welcome_parties ?? 0,
       sow_signed_date: signed, sow_url: o.sow_url ?? null, needs_onsite: o.needs_onsite ?? false,
