@@ -10,7 +10,7 @@ import { useAuth } from '../context/AuthContext'
 import { repo } from '../lib/repo'
 import { RAG_HEX } from '../lib/rag'
 import { categoryTint } from '../lib/palette'
-import { STATUS_LABEL, type IvStatus } from '../lib/types'
+import { STATUS_LABEL, type IvStatus, type InterventionView } from '../lib/types'
 
 import { Empty, Field, Modal, RagPill, StatCard, fmtDate, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
@@ -385,23 +385,10 @@ export default function MyWork() {
             <span className="rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">{closeoutRequests.length}</span>
           </div>
           <div className="space-y-2">
-            {closeoutRequests.map(i => {
-              const who = people.find(p => p.id === i.closeout_requested_by)?.full_name ?? 'a consultant'
-              return (
-                <div key={i.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-800 p-3">
-                  <div className="text-sm text-white/80">
-                    <span className="text-white">{i.beneficiary_name}</span> — {i.title}
-                    <div className="mt-0.5 text-[11px] text-white/40">Requested by {who}</div>
-                  </div>
-                  <button
-                    onClick={() => repo.confirmCloseout(i.id, user?.id ?? null)}
-                    className="rounded-lg bg-lime px-3 py-1.5 text-xs font-medium text-ink-900 hover:opacity-90"
-                  >
-                    Confirm close-out
-                  </button>
-                </div>
-              )
-            })}
+            {closeoutRequests.map(i => (
+              <CloseoutRequestRow key={i.id} i={i} userId={user?.id ?? null}
+                who={people.find(p => p.id === i.closeout_requested_by)?.full_name ?? 'a consultant'} />
+            ))}
           </div>
         </motion.section>
       )}
@@ -694,5 +681,51 @@ function StatToggle({ active, onClick, children }: { active: boolean; onClick: (
     >
       {children}
     </button>
+  )
+}
+
+// A single row in the ManCo "Close-out requests" queue: verify & confirm, or return to the
+// consultant with a reason (previously the return was only reachable from the intervention page).
+function CloseoutRequestRow({ i, userId, who }: { i: InterventionView; userId: string | null; who: string }) {
+  const [returning, setReturning] = useState(false)
+  const [reason, setReason] = useState('')
+  return (
+    <div className="rounded-lg bg-ink-800 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-white/80">
+          <span className="text-white">{i.beneficiary_name}</span> — {i.title}
+          <div className="mt-0.5 text-[11px] text-white/40">Requested by {who}</div>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => repo.confirmCloseout(i.id, userId)}
+            className="rounded-lg bg-lime px-3 py-1.5 text-xs font-medium text-ink-900 hover:opacity-90"
+          >
+            Verify &amp; confirm
+          </button>
+          <button
+            onClick={() => setReturning(v => !v)}
+            className="rounded-lg border border-ink-500 px-3 py-1.5 text-xs text-white/70 hover:text-white"
+          >
+            Return
+          </button>
+        </div>
+      </div>
+      {returning && (
+        <div className="mt-3 rounded-md bg-ink-900/60 p-3">
+          <textarea
+            className="input h-16 w-full resize-none"
+            placeholder="Reason for returning — sent to the consultant so they can fix and resubmit."
+            value={reason} onChange={e => setReason(e.target.value)} />
+          <div className="mt-2 flex justify-end gap-2">
+            <button className="btn-ghost" onClick={() => { setReturning(false); setReason('') }}>Cancel</button>
+            <button className="btn-danger" disabled={!reason.trim()}
+              onClick={async () => { await repo.returnCloseout(i.id, userId, reason.trim()); setReturning(false); setReason('') }}>
+              Return to consultant
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
