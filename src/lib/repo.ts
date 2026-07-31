@@ -1346,6 +1346,14 @@ export const repo = {
     ping()
   },
 
+  // Admin: set which sections are HIDDEN for a user (visibility layer on top of their role).
+  async setUserHiddenSections(id: string, hidden: string[], _byUserId: string | null) {
+    const i = db.profiles.findIndex(x => x.id === id)
+    if (i >= 0) db.profiles[i] = { ...db.profiles[i], hidden_sections: hidden }
+    if (LIVE) await supabase!.from('profiles').update({ hidden_sections: hidden }).eq('id', id)
+    ping()
+  },
+
   // Admin hard-delete: permanently removes the user's login + profile everywhere.
   // Live: a privileged edge function deletes the auth user (which cascades the
   // profile, their events and notifications); references elsewhere are set null.
