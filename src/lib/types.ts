@@ -354,6 +354,43 @@ export interface UserEvent {
   text?: string | null
 }
 
+// ================= Feedback (Central Hub → Bugs & Lightbulbs) =================
+// Any signed-in user (internal or external) can log a bug or a suggestion ("lightbulb").
+// Managers (ManCo/Exco) triage them: set priority, star favourites, change status, add a note, delete.
+export type FeedbackKind = 'bug' | 'lightbulb'
+export type FeedbackStatus = 'open' | 'in_progress' | 'resolved' | 'dismissed'
+export type FeedbackPriority = 'none' | 'low' | 'medium' | 'high'
+
+export const FEEDBACK_KIND_LABEL: Record<FeedbackKind, string> = {
+  bug: 'Bug', lightbulb: 'Idea',
+}
+export const FEEDBACK_STATUS_LABEL: Record<FeedbackStatus, string> = {
+  open: 'Open', in_progress: 'In progress', resolved: 'Resolved', dismissed: 'Dismissed',
+}
+export const FEEDBACK_PRIORITY_LABEL: Record<FeedbackPriority, string> = {
+  none: 'Unset', low: 'Low', medium: 'Medium', high: 'High',
+}
+export const FEEDBACK_STATUSES: FeedbackStatus[] = ['open', 'in_progress', 'resolved', 'dismissed']
+export const FEEDBACK_PRIORITIES: FeedbackPriority[] = ['none', 'low', 'medium', 'high']
+
+export interface Feedback {
+  id: string
+  kind: FeedbackKind
+  title: string
+  detail?: string | null
+  area?: string | null                 // which part of the app it's about (optional)
+  status: FeedbackStatus
+  priority: FeedbackPriority
+  favourite: boolean
+  author_id?: string | null
+  author_name?: string | null          // snapshot, shown without a join / survives author deletion
+  author_role?: Role | null
+  admin_note?: string | null           // manager triage note
+  resolved_at?: string | null
+  resolved_by?: string | null
+  created_at: string
+}
+
 export interface BeneficiaryEvent {
   id: string
   beneficiary_id: string
