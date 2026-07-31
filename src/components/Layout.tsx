@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket,
+  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket, LifeBuoy,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -51,7 +51,18 @@ export default function Layout({ children }: { children: ReactNode }) {
             </NavLink>
           ))}
         </nav>
-        <div className="mt-6 border-t border-ink-600 pt-4">
+        <div className="mt-4 border-t border-ink-600 pt-3">
+          <NavLink to="/central-hub"
+            className={({ isActive }) =>
+              `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                isActive ? 'bg-lime-soft text-lime' : 'text-white/50 hover:bg-ink-700 hover:text-white'
+              }`
+            }>
+            <LifeBuoy size={17} />
+            Central Hub
+          </NavLink>
+        </div>
+        <div className="mt-3 border-t border-ink-600 pt-4">
           <div className="text-sm text-white">{user.full_name}</div>
           <div className="text-[11px] uppercase tracking-wider text-lime">{user.role}</div>
           <button

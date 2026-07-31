@@ -14,6 +14,7 @@ import Escalations from './pages/Escalations'
 import Admin from './pages/Admin'
 import Portal from './pages/Portal'
 import ClientWork from './pages/ClientWork'
+import CentralHub from './pages/CentralHub'
 
 export default function App() {
   const { user, loading, recovery } = useAuth()
@@ -43,6 +44,7 @@ export default function App() {
         <Routes>
           {!portalHidden && <Route path="/portal" element={<Portal />} />}
           <Route path="/my-work" element={<ClientWork />} />
+          <Route path="/central-hub" element={<CentralHub />} />
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </Layout>
@@ -65,6 +67,7 @@ export default function App() {
         <Route path="/huddle" element={<Huddle />} />
         <Route path="/escalations" element={<Escalations />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/central-hub" element={<CentralHub />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>
