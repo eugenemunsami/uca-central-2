@@ -3,14 +3,14 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell, Clock, CheckCircle2, Sparkles, Eye,
-  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen, Rocket,
+  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen, Rocket, ExternalLink,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { repo } from '../lib/repo'
 import { RAG_HEX } from '../lib/rag'
 import { categoryTint } from '../lib/palette'
-import { STATUS_LABEL, ONB_TERMINAL, ONB_STATUS_LABEL, type IvStatus, type InterventionView } from '../lib/types'
+import { STATUS_LABEL, ONB_TERMINAL, ONB_STATUS_LABEL, DISCOVERY_DONE, type IvStatus, type InterventionView } from '../lib/types'
 
 import { Empty, Field, Modal, RagPill, StatCard, fmtDate, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
@@ -92,8 +92,11 @@ export default function MyWork() {
 
   // New assignments still need acknowledging before they enter the main flow.
   const newAssignments = useMemo(() => mineAll.filter(i => !i.acknowledged), [mineAll])
-  // The main list / stats / filters / due-bell only see acknowledged work.
-  const mine = useMemo(() => mineAll.filter(i => i.acknowledged), [mineAll])
+  // After acknowledging, a new intervention waits at the discovery-form check until it's cleared.
+  const isDiscoveryPending = (i: InterventionView) => i.acknowledged && !DISCOVERY_DONE.includes((i.discovery_status ?? 'na'))
+  const needsDiscovery = useMemo(() => mineAll.filter(isDiscoveryPending), [mineAll])
+  // The main list / stats / filters / due-bell only see acknowledged work whose discovery is done.
+  const mine = useMemo(() => mineAll.filter(i => i.acknowledged && !isDiscoveryPending(i)), [mineAll])
 
   const openIvs = mine.filter(i => i.status !== 'completed')
   const stale = openIvs.filter(i => isStale(i.id, i.created_at))
@@ -616,6 +619,22 @@ export default function MyWork() {
         )}
       </AnimatePresence>
 
+      {needsDiscovery.length > 0 && (
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card border-lime/30 p-5">
+          <div className="mb-2 flex items-center gap-2">
+            <FileCheck2 size={16} className="text-lime" />
+            <h2 className="text-sm text-white">Discovery check</h2>
+            <span className="rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">{needsDiscovery.length}</span>
+          </div>
+          <p className="mb-3 text-[11px] text-white/40">
+            Before the clock starts, confirm the beneficiary has completed the discovery form for each new intervention.
+          </p>
+          <div className="space-y-2">
+            {needsDiscovery.map(i => <DiscoveryCheckCard key={i.id} i={i} userId={user?.id ?? null} />)}
+          </div>
+        </motion.section>
+      )}
+
       {myOnboarding.length > 0 && (
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
           <div className="mb-4 flex items-center gap-2">
@@ -734,6 +753,52 @@ function StatToggle({ active, onClick, children }: { active: boolean; onClick: (
     >
       {children}
     </button>
+  )
+}
+
+// Discovery-form gate: after acknowledging, the consultant confirms whether the beneficiary has
+// filled the intervention's discovery form. Complete / Not applicable start the work (and the timers);
+// Incomplete keeps it waiting and offers a follow-up or an escalation.
+function DiscoveryCheckCard({ i, userId }: { i: InterventionView; userId: string | null }) {
+  const incomplete = i.discovery_status === 'incomplete'
+  return (
+    <div className="rounded-lg bg-ink-800 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-white/80">
+          <span className="text-white">{i.title}</span>
+          <span className="text-white/40"> · {i.beneficiary_name}</span>
+          <div className="mt-0.5 text-[11px] text-white/40">
+            {incomplete
+              ? 'Marked incomplete — the beneficiary hasn’t filled the discovery form yet.'
+              : 'Has the beneficiary completed the discovery form for this intervention?'}
+          </div>
+          {i.discovery_link && (
+            <a href={i.discovery_link} target="_blank" rel="noreferrer"
+              className="mt-1 inline-flex items-center gap-1.5 text-[11px] text-lime hover:text-white">
+              <ExternalLink size={11} /> Open discovery form
+            </a>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => repo.recordDiscovery(i.id, userId, 'complete')}
+            className="rounded-lg bg-lime px-3 py-1.5 text-xs font-medium text-ink-900 hover:opacity-90">Complete</button>
+          <button onClick={() => repo.recordDiscovery(i.id, userId, 'na')}
+            className="rounded-lg border border-ink-500 px-3 py-1.5 text-xs text-white/70 hover:text-white">Not applicable</button>
+          {!incomplete && (
+            <button onClick={() => repo.recordDiscovery(i.id, userId, 'incomplete')}
+              className="rounded-lg border border-ink-500 px-3 py-1.5 text-xs text-white/70 hover:text-white">Incomplete</button>
+          )}
+        </div>
+      </div>
+      {incomplete && (
+        <div className="mt-2 flex gap-2">
+          <Link to={`/beneficiaries/${i.beneficiary_id}`}
+            className="rounded-lg border border-ink-500 px-3 py-1.5 text-[11px] text-white/70 hover:text-white">Log follow-up →</Link>
+          <Link to={`/beneficiaries/${i.beneficiary_id}`}
+            className="rounded-lg border border-flame/40 px-3 py-1.5 text-[11px] text-flame hover:text-white">Escalate →</Link>
+        </div>
+      )}
+    </div>
   )
 }
 
