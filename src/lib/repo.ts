@@ -37,6 +37,29 @@ const listeners = new Set<() => void>()
 export const subscribe = (fn: () => void) => { listeners.add(fn); return () => listeners.delete(fn) }
 const ping = () => listeners.forEach(fn => fn())
 
+// ---- Live sync (Supabase Realtime) ----
+// So every open client refreshes automatically when the data changes — no manual page refresh, and
+// nobody is left looking at stale data. A short debounce coalesces bursts of related writes into a
+// single reload. RLS still applies to the change stream (supabase-js keeps the socket's auth token
+// in sync with the logged-in user), so clients only get pinged for changes they can actually see.
+if (LIVE && supabase) {
+  let pending: ReturnType<typeof setTimeout> | null = null
+  const refreshSoon = () => {
+    if (pending) return
+    pending = setTimeout(() => { pending = null; ping() }, 300)
+  }
+  const channel = supabase.channel('central-live')
+  const REALTIME_TABLES = [
+    'beneficiaries', 'interventions', 'weekly_updates', 'comms_log', 'escalations', 'escalation_events',
+    'beneficiary_events', 'user_events', 'notifications', 'rag_overrides', 'onboardings', 'onboarding_events',
+    'welcome_parties', 'welcome_party_invites', 'profiles', 'intervention_catalogue',
+  ]
+  for (const table of REALTIME_TABLES) {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table }, refreshSoon)
+  }
+  channel.subscribe()
+}
+
 function decorateIv(i: Intervention): InterventionView {
   const { rag, reason, daysAwaiting, lastUpdateAt } = computeRag(i, db.updates, db.escalations)
   const c = db.catalogue.find(c => c.id === i.catalogue_id)
