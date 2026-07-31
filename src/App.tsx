@@ -36,12 +36,14 @@ export default function App() {
   if (!user) return <Routes><Route path="*" element={<Login />} /></Routes>
 
   if (user.role === 'external') {
+    const portalHidden = (user.hidden_sections ?? []).includes('portal')
+    const home = portalHidden ? '/my-work' : '/portal'
     return (
       <Layout>
         <Routes>
-          <Route path="/portal" element={<Portal />} />
+          {!portalHidden && <Route path="/portal" element={<Portal />} />}
           <Route path="/my-work" element={<ClientWork />} />
-          <Route path="*" element={<Navigate to="/portal" replace />} />
+          <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </Layout>
     )
