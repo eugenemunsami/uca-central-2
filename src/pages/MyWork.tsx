@@ -3,17 +3,18 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell, Clock, CheckCircle2, Sparkles, Eye,
-  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen,
+  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen, Rocket,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { repo } from '../lib/repo'
 import { RAG_HEX } from '../lib/rag'
 import { categoryTint } from '../lib/palette'
-import { STATUS_LABEL, type IvStatus, type InterventionView } from '../lib/types'
+import { STATUS_LABEL, ONB_TERMINAL, ONB_STATUS_LABEL, type IvStatus, type InterventionView } from '../lib/types'
 
 import { Empty, Field, Modal, RagPill, StatCard, fmtDate, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
+import OnboardingDetail from '../components/OnboardingDetail'
 
 const ALL = '__all__'
 const uniq = (xs: string[]) => Array.from(new Set(xs)).sort((a, b) => a.localeCompare(b))
@@ -53,7 +54,7 @@ const fmtLong = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
 export default function MyWork() {
-  const { beneficiaries, interventions, updates, escalations, notifications, people, loading } = useData()
+  const { beneficiaries, interventions, updates, escalations, notifications, onboardings, people, loading } = useData()
   const { user, can } = useAuth()
 
   const [fTitle, setFTitle] = useState(ALL)
@@ -63,6 +64,12 @@ export default function MyWork() {
   const [stat, setStat] = useState<StatFilter>(null)
   const [bellOpen, setBellOpen] = useState(false)
   const [viewEsc, setViewEsc] = useState<string | null>(null)
+  const [viewOnb, setViewOnb] = useState<string | null>(null)
+
+  // Onboarding tickets this user currently owns (baton sits with them) — so ownership shows in My Work.
+  const myOnboarding = useMemo(
+    () => onboardings.filter(o => o.current_owner_id === user?.id && !ONB_TERMINAL.includes(o.status)),
+    [onboardings, user])
 
   // Beneficiary close-out ("Produce & send") modal state.
   const [closeoutBen, setCloseoutBen] = useState<string | null>(null)
@@ -609,6 +616,31 @@ export default function MyWork() {
         )}
       </AnimatePresence>
 
+      {myOnboarding.length > 0 && (
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Rocket size={16} className="text-lime" />
+            <h2 className="text-sm text-white">Onboarding you own</h2>
+            <span className="rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">{myOnboarding.length}</span>
+          </div>
+          <div className="space-y-2">
+            {myOnboarding.map(o => (
+              <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-800 p-3">
+                <div className="text-sm text-white/80">
+                  <span className="text-white">{o.name}</span>
+                  <span className="text-white/40"> · {o.client_name}</span>
+                  <div className="mt-0.5 text-[11px] text-white/40">{ONB_STATUS_LABEL[o.status]} · last action {timeAgo(o.last_action_at)}</div>
+                </div>
+                <button onClick={() => setViewOnb(o.id)}
+                  className="rounded-lg bg-lime px-3 py-1.5 text-xs font-medium text-ink-900 hover:opacity-90">
+                  View / act
+                </button>
+              </div>
+            ))}
+          </div>
+        </motion.section>
+      )}
+
       <div className="flex flex-wrap gap-3">
         <Select value={fTitle} onChange={setFTitle} options={titleOpts} allLabel="All interventions" />
         <Select value={fBeneficiary} onChange={setFBeneficiary} options={benOpts} allLabel="All beneficiaries" />
@@ -632,6 +664,10 @@ export default function MyWork() {
         </div>
       )}
       {list.length === 0 && <Empty text={mine.length === 0 ? 'Nothing assigned to you yet.' : 'No interventions match these filters.'} />}
+
+      <Modal open={Boolean(viewOnb)} onClose={() => setViewOnb(null)} title="Onboarding ticket" wide>
+        {viewOnb && <OnboardingDetail id={viewOnb} onClose={() => setViewOnb(null)} />}
+      </Modal>
 
       <Modal open={Boolean(viewEsc)} onClose={() => setViewEsc(null)} title="Escalation" wide>
         {viewEsc && <EscalationDetail id={viewEsc} onClose={() => setViewEsc(null)} />}

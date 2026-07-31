@@ -1391,15 +1391,18 @@ export const repo = {
         onboarding_id: o.id, user_id: actorId, kind,
         from_status: fromStatus, to_status: toStatus, from_owner_id: fromOwner, to_owner_id: ownerId, text,
       })
-      if (notice && notifyTarget && notifyTarget !== actorId) {
-        try { await supabase!.rpc('app_notify', { recipient_ids: [notifyTarget], p_kind: 'onboarding', p_text: notice }) } catch { /* best-effort */ }
+      // Notify everyone attached to the ticket (not just the new owner); the owner gets action_required.
+      if (notice) {
+        const recips = participants.filter(u => u && u !== actorId)
+        if (recips.length) try { await supabase!.rpc('app_notify', { recipient_ids: recips, p_kind: 'onboarding', p_text: notice, p_action_owner: notifyTarget }) } catch { /* best-effort */ }
       }
       ping(); return
     }
     const i = db.onboardings.findIndex(x => x.id === o.id)
     if (i >= 0) db.onboardings[i] = { ...merged, status: toStatus, current_owner_role: role, current_owner_id: ownerId, participants, last_action_at: now }
     db.onboardingEvents.unshift({ id: uid(), onboarding_id: o.id, at: now, user_id: actorId, kind, from_status: fromStatus, to_status: toStatus, from_owner_id: fromOwner, to_owner_id: ownerId, text: text ?? null })
-    if (notice && notifyTarget && notifyTarget !== actorId) db.notifications.unshift({ id: uid(), user_id: notifyTarget, at: now, kind: 'onboarding', text: notice, escalation_id: null, action_required: true, read: false })
+    if (notice) participants.filter(u => u && u !== actorId).forEach(u =>
+      db.notifications.unshift({ id: uid(), user_id: u, at: now, kind: 'onboarding', text: notice, escalation_id: null, action_required: u === notifyTarget, read: false }))
     ping()
   },
 
