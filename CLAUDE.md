@@ -85,7 +85,8 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 `0006` live notifications/events/sweeps · `0007` onboarding · `0008` beneficiary company (funding lines) ·
 `0009` welcome-party Teams URL · `0010` rag reason on completed · `0011` onboarding esc return ·
 `0012` realtime publication · `0013` discovery gate · `0014` user hidden_sections · `0015` feedback (Bugs & Ideas) ·
-`0016` external aggregator access (scoped onboarding read + sponsor-act; onboarding/party RLS relaxed to my_sponsors).
+`0016` external aggregator access (scoped onboarding read + sponsor-act; onboarding/party RLS relaxed to my_sponsors) ·
+`0017` intervention_catalogue readable by external (so v_intervention_rag can label titles/categories in the client view).
 
 ## 6. Key files
 
@@ -168,4 +169,4 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Open clarification still parked (to do at the very end):** what "**program**" means as a filter dimension on the Onboarding dashboard (ED vs SD, or something else?) — only blocks that one sub-item.
 
-**Migrations now through 0016.** Realtime is live, so any new operational table should be added to the supabase_realtime publication too (the `feedback` table already is).
+**Migrations now through 0017.** Realtime is live, so any new operational table should be added to the supabase_realtime publication too (the `feedback` table already is). Note: v_*_rag views are `security_invoker`, so any table they JOIN for labels (e.g. `intervention_catalogue`) must be READABLE by whichever role should see those labels — else the COALESCE fallback shows generic text (this was the "Intervention/-" bug fixed in 0017).
