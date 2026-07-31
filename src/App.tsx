@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { TOGGLEABLE_SECTIONS } from './lib/types'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
@@ -45,6 +46,11 @@ export default function App() {
       </Layout>
     )
   }
+
+  // Admin per-user section switches: a hidden section can't be reached directly either.
+  const hidden = user.hidden_sections ?? []
+  const hiddenPaths = TOGGLEABLE_SECTIONS.filter(s => hidden.includes(s.key)).map(s => s.path)
+  if (hiddenPaths.includes(location.pathname)) return <Navigate to="/my-work" replace />
 
   return (
     <Layout>
