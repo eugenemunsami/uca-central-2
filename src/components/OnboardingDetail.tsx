@@ -8,7 +8,7 @@ import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
 import {
-  ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL, ONB_EVENT_LABEL, ONB_TERMINAL, companyKey,
+  ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL, ONB_EVENT_LABEL, ONB_TERMINAL, ONB_ESC_STATUSES, companyKey,
   type OnbStatus,
 } from '../lib/types'
 import { Empty, Field, fmtDate } from './ui'
@@ -39,6 +39,7 @@ type FormKind =
   | null | 'note' | 'invoice' | 'assign_ember' | 'ember_done' | 'ember_reject' | 'ember_revised'
   | 'add_party' | 'send_sow' | 'sow_signed' | 'withdraw' | 'request_visit' | 'assign_visit'
   | 'back_on_track' | 'escalate' | 'esc_approve' | 'esc_decline' | 'esc_return'
+  | 'raise_sponsor' | 'resolve_esc'
 
 export default function OnboardingDetail({ id, onClose }: { id: string; onClose?: () => void }) {
   const { onboardings, onboardingEvents, welcomeParties, people, beneficiaries } = useData()
@@ -90,6 +91,8 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
       case 'esc_approve': await repo.onbEscApprove(id, user.id, a); break
       case 'esc_decline': await repo.onbEscDecline(id, user.id, a); break
       case 'esc_return': await repo.onbEscReturn(id, user.id, a); break
+      case 'raise_sponsor': await repo.onbRaiseToSponsor(id, user.id, a); break
+      case 'resolve_esc': await repo.onbResolveEscalation(id, user.id, a); break
     }
     reset()
   }
@@ -190,7 +193,10 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
             </>
           )}
           {o.status === 'esc_sponsor' && (
-            <button className="btn-primary" onClick={() => setForm('esc_return')}><CornerUpLeft size={15} /> Return to consultant</button>
+            <button className="btn-primary" onClick={() => setForm('resolve_esc')}><CornerUpLeft size={15} /> Resolve escalation → return</button>
+          )}
+          {!ONB_ESC_STATUSES.includes(o.status) && (
+            <button className="btn-ghost" onClick={() => setForm('raise_sponsor')}><ArrowUp size={15} /> Escalate to Sponsor</button>
           )}
           <button className="btn-ghost" onClick={() => setForm('note')}><MessageSquarePlus size={15} /> Add note</button>
         </div>
@@ -287,13 +293,16 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
           )}
           {(form === 'note' || form === 'ember_reject' || form === 'ember_revised' || form === 'withdraw'
             || form === 'request_visit' || form === 'back_on_track' || form === 'escalate'
-            || form === 'esc_approve' || form === 'esc_decline' || form === 'esc_return') && (
+            || form === 'esc_approve' || form === 'esc_decline' || form === 'esc_return'
+            || form === 'raise_sponsor' || form === 'resolve_esc') && (
             <Field label={
               form === 'note' ? 'Note'
               : form === 'ember_reject' ? 'What needs fixing (required)'
               : form === 'withdraw' ? 'Reason for removal (required)'
               : form === 'request_visit' ? 'Context for the visit / call'
               : form === 'escalate' || form === 'esc_decline' ? 'Reason (required)'
+              : form === 'raise_sponsor' ? 'Reason for escalation (required)'
+              : form === 'resolve_esc' ? 'Resolution note (recorded on behalf of the Aggregator/Sponsor)'
               : 'Note'
             }>
               <textarea className="input h-20 resize-none" value={a} onChange={e => setA(e.target.value)} />
@@ -308,7 +317,7 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
                 || (form === 'add_party' && !target)
                 || (form === 'assign_visit' && !target)
                 || (form === 'escalate' && (!target || !a.trim()))
-                || (['note', 'ember_reject', 'ember_revised', 'withdraw', 'request_visit', 'back_on_track', 'esc_approve', 'esc_decline', 'esc_return'].includes(form) && !a.trim())
+                || (['note', 'ember_reject', 'ember_revised', 'withdraw', 'request_visit', 'back_on_track', 'esc_approve', 'esc_decline', 'esc_return', 'raise_sponsor'].includes(form) && !a.trim())
               }
               onClick={submit}>Submit</button>
           </div>

@@ -528,6 +528,7 @@ export interface Onboarding {
   welcome_party_id?: string | null
   missed_welcome_parties: number
   participants: string[]
+  esc_return_status?: OnbStatus | null   // stage to return to after a direct sponsor escalation resolves
   withdrawn_reason?: string | null
   converted_beneficiary_id?: string | null
   created_by?: string | null
@@ -540,7 +541,8 @@ export type OnbEventKind =
   | 'ember_approved' | 'ember_rejected' | 'ember_revised' | 'added_to_party' | 'comms_sent'
   | 'attended' | 'no_show' | 'rolled_over' | 'sow_sent' | 'sow_signed' | 'converted'
   | 'withdrawn' | 'visit_requested' | 'visit_assigned' | 'back_on_track'
-  | 'escalated_manco' | 'esc_declined' | 'esc_approved' | 'esc_returned' | 'note'
+  | 'escalated_manco' | 'esc_declined' | 'esc_approved' | 'esc_returned'
+  | 'escalated_sponsor' | 'esc_resolved' | 'note'
 
 export const ONB_EVENT_LABEL: Record<OnbEventKind, string> = {
   created: 'Onboarding ticket opened',
@@ -567,6 +569,8 @@ export const ONB_EVENT_LABEL: Record<OnbEventKind, string> = {
   esc_declined: 'Escalation declined — back to consultant',
   esc_approved: 'Escalation approved — to Aggregator/Sponsor',
   esc_returned: 'Escalation returned by Aggregator/Sponsor',
+  escalated_sponsor: 'Escalated to Aggregator/Sponsor',
+  esc_resolved: 'Escalation resolved — returned to the owner',
   note: 'Note added',
 }
 
