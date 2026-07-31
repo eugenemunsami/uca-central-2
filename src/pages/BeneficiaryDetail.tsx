@@ -14,7 +14,7 @@ import { categoryTint } from '../lib/palette'
 import { openEvidencePack } from '../lib/evidencePack'
 import {
   BEN_EVENT_LABEL, LIFECYCLE_LABEL, STAGE_LABEL, STATUS_LABEL, companyKey,
-  type Beneficiary, type BeneficiaryEvent, type BeneficiaryView, type Channel, type Director,
+  type Beneficiary, type BeneficiaryEvent, type BeneficiaryView, type Channel, type Comm, type Director,
   type InterventionView, type IvStatus, type Profile, type Rag, type RagOverride, type WeeklyUpdate,
 } from '../lib/types'
 import { Empty, Field, Modal, RagPill, fmtDate, timeAgo } from '../components/ui'
@@ -80,15 +80,18 @@ export default function BeneficiaryDetail() {
   const ivEsc = iv ? escalations.find(e => e.intervention_id === iv.id && e.status !== 'resolved') ?? null : null
   const ivContactCount = iv ? comms.filter(c => c.intervention_id === iv.id).length : 0
 
-  // Merged history timeline: this intervention's weekly updates + beneficiary RAG overrides + activity log.
+  // Merged history timeline: this intervention's weekly updates + beneficiary RAG overrides +
+  // activity log + communications (so the close-out email appears here as well as in the Comms Log).
   type Entry =
     | { kind: 'update'; date: string; u: WeeklyUpdate }
     | { kind: 'override'; date: string; o: RagOverride }
     | { kind: 'event'; date: string; e: BeneficiaryEvent }
+    | { kind: 'comm'; date: string; c: Comm }
   const timeline: Entry[] = [
     ...ivUpdates.map(u => ({ kind: 'update' as const, date: u.created_at, u })),
     ...benOverrides.map(o => ({ kind: 'override' as const, date: o.effective_date, o })),
     ...benLog.map(e => ({ kind: 'event' as const, date: e.at, e })),
+    ...benComms.map(c => ({ kind: 'comm' as const, date: c.occurred_at, c })),
   ].sort((a, z) => z.date.localeCompare(a.date))
 
   return (
@@ -500,6 +503,25 @@ export default function BeneficiaryDetail() {
                         </div>
                       </motion.div>
                     )
+                    if (entry.kind === 'comm') {
+                      const CIcon = CHANNEL_ICON[entry.c.channel]
+                      return (
+                        <motion.div key={`c-${entry.c.id}`} layout
+                          initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                          className="border-l-2 border-lime/40 pl-4">
+                          <div className="mb-1 flex items-center gap-2 text-[11px] text-white/35">
+                            <CIcon size={11} />
+                            <span>{new Date(entry.c.occurred_at).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}</span>
+                            <span>·</span>
+                            <span>{people.find(p => p.id === entry.c.author_id)?.full_name ?? 'UCA'}</span>
+                          </div>
+                          <div className="text-sm text-white/70">{entry.c.context}</div>
+                          {entry.c.email_text && (
+                            <div className="mt-1 whitespace-pre-wrap rounded-md bg-ink-900/60 px-3 py-2 text-[11px] text-white/50">{entry.c.email_text}</div>
+                          )}
+                        </motion.div>
+                      )
+                    }
                     return (
                       <motion.div key={`e-${entry.e.id}`} layout
                         initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
