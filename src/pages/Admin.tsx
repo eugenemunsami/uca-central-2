@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  AlertTriangle, Ban, Building2, ChevronDown, Eye, EyeOff, History, KeyRound, Mail, Network, Plus,
-  RotateCcw, ToggleLeft, ToggleRight, Trash2, UserCheck,
+  AlertTriangle, Ban, Bug, Building2, ChevronDown, Eye, EyeOff, History, KeyRound, Lightbulb, Mail,
+  MessageSquare, Network, Plus, RotateCcw, Star, ToggleLeft, ToggleRight, Trash2, UserCheck,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo, subscribe } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
-import type { BeneficiaryView, InterventionView, Profile, Role, UserStatus } from '../lib/types'
-import { LIFECYCLE_LABEL, STATUS_LABEL, USER_EVENT_LABEL, USER_STATUS_LABEL, TOGGLEABLE_SECTIONS } from '../lib/types'
+import type {
+  BeneficiaryView, Feedback, FeedbackKind, FeedbackStatus, FeedbackPriority, InterventionView,
+  Profile, Role, UserStatus,
+} from '../lib/types'
+import {
+  LIFECYCLE_LABEL, STATUS_LABEL, USER_EVENT_LABEL, USER_STATUS_LABEL, TOGGLEABLE_SECTIONS,
+  FEEDBACK_STATUS_LABEL, FEEDBACK_PRIORITY_LABEL, FEEDBACK_STATUSES, FEEDBACK_PRIORITIES,
+} from '../lib/types'
 import { Empty, Field, Modal, RagPill } from '../components/ui'
 import { categoryTint } from '../lib/palette'
 
@@ -52,7 +58,7 @@ export default function Admin() {
   const isManco = user?.role === 'manco'
   // ManCo + Exco can hide / delete records; this is exactly what can('manage') gates (and what the DB allows).
   const canManage = can('manage')
-  const [tab, setTab] = useState<'interventions' | 'programmes' | 'beneficiaries' | 'users'>('interventions')
+  const [tab, setTab] = useState<'interventions' | 'programmes' | 'beneficiaries' | 'users' | 'feedback'>('interventions')
   const [addCat, setAddCat] = useState(false)
   const [addUser, setAddUser] = useState(false)
   const [addAgg, setAddAgg] = useState(false)
@@ -190,11 +196,14 @@ export default function Admin() {
       </header>
 
       <div className="flex gap-1 rounded-lg bg-ink-800 p-1">
-        {(['interventions', 'programmes', 'beneficiaries', 'users'] as const).map(t => (
+        {([
+          ['interventions', 'Interventions'], ['programmes', 'Programmes'],
+          ['beneficiaries', 'Beneficiaries'], ['users', 'Users'], ['feedback', 'Bugs & Ideas'],
+        ] as const).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)}
-            className={`rounded-md px-4 py-2 text-sm capitalize transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm transition-colors ${
               tab === t ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
-            {t}
+            {label}
           </button>
         ))}
       </div>
@@ -502,7 +511,7 @@ export default function Admin() {
             })
           )}
         </>
-      ) : (
+      ) : tab === 'users' ? (
         <>
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs text-white/35">
@@ -673,6 +682,8 @@ export default function Admin() {
             </table>
           </div>
         </>
+      ) : (
+        <FeedbackAdmin actorId={user?.id ?? null} />
       )}
 
       <Modal open={addCat} onClose={() => setAddCat(false)} title="Add an intervention to the catalogue">
@@ -993,5 +1004,166 @@ function SectionsModal({ p, actorId, onClose }: { p: Profile; actorId: string | 
         })}
       </div>
     </Modal>
+  )
+}
+
+// ---- Admin: Bugs & Ideas review list ----
+// Everything users log from the Central Hub lands here. Managers can star favourites, set a priority,
+// change status, leave a reply the submitter sees, or delete. Loads its own data + subscribes so it
+// stays live. RLS lets ManCo/Exco see and manage every row.
+const FB_PRIORITY_RANK: Record<FeedbackPriority, number> = { none: 0, low: 1, medium: 2, high: 3 }
+const FB_STATUS_HEX: Record<FeedbackStatus, string> = {
+  open: '#F5B942', in_progress: '#5AA9E6', resolved: '#9FD150', dismissed: '#8A94A6',
+}
+
+function FeedbackAdmin({ actorId }: { actorId: string | null }) {
+  const [rows, setRows] = useState<Feedback[]>([])
+  const [kindF, setKindF] = useState<'all' | FeedbackKind>('all')
+  const [statusF, setStatusF] = useState<'all' | FeedbackStatus>('all')
+  const [favOnly, setFavOnly] = useState(false)
+  const [noteFor, setNoteFor] = useState<string | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [del, setDel] = useState<Feedback | null>(null)
+
+  useEffect(() => {
+    const load = () => repo.feedback().then(setRows).catch(() => setRows([]))
+    load()
+    const unsub = subscribe(load)
+    return () => { unsub() }
+  }, [])
+
+  const shown = useMemo(() => rows
+    .filter(f => kindF === 'all' || f.kind === kindF)
+    .filter(f => statusF === 'all' || f.status === statusF)
+    .filter(f => !favOnly || f.favourite)
+    .sort((a, z) =>
+      (Number(z.favourite) - Number(a.favourite)) ||
+      (FB_PRIORITY_RANK[z.priority] - FB_PRIORITY_RANK[a.priority]) ||
+      z.created_at.localeCompare(a.created_at)),
+    [rows, kindF, statusF, favOnly])
+
+  const openCount = rows.filter(f => f.status === 'open').length
+  const bugCount = rows.filter(f => f.kind === 'bug').length
+  const ideaCount = rows.filter(f => f.kind === 'lightbulb').length
+
+  return (
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-xs text-white/35">
+          {rows.length} logged · {openCount} open · {bugCount} {bugCount === 1 ? 'bug' : 'bugs'} · {ideaCount} {ideaCount === 1 ? 'idea' : 'ideas'}
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select className="input w-32 py-1 text-xs" value={kindF} onChange={e => setKindF(e.target.value as typeof kindF)}>
+            <option value="all">All types</option>
+            <option value="bug">Bugs</option>
+            <option value="lightbulb">Ideas</option>
+          </select>
+          <select className="input w-36 py-1 text-xs" value={statusF} onChange={e => setStatusF(e.target.value as typeof statusF)}>
+            <option value="all">All statuses</option>
+            {FEEDBACK_STATUSES.map(s => <option key={s} value={s}>{FEEDBACK_STATUS_LABEL[s]}</option>)}
+          </select>
+          <button onClick={() => setFavOnly(v => !v)}
+            className={`btn-ghost px-2.5 py-1.5 text-xs ${favOnly ? 'text-lime' : 'text-white/50'}`}>
+            <Star size={13} className={favOnly ? 'fill-lime' : ''} /> Starred
+          </button>
+        </div>
+      </div>
+
+      {shown.length === 0 ? (
+        <Empty text={rows.length === 0 ? 'Nothing has been logged yet.' : 'Nothing matches these filters.'} />
+      ) : (
+        <div className="space-y-2">
+          {shown.map((f, gi) => (
+            <motion.div key={f.id} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: Math.min(gi * 0.02, 0.2) }}
+              className={`card p-4 ${f.status === 'resolved' || f.status === 'dismissed' ? 'opacity-70' : ''}`}>
+              <div className="flex items-start gap-3">
+                <button onClick={() => repo.updateFeedback(f.id, { favourite: !f.favourite }, actorId)}
+                  className={`mt-0.5 shrink-0 ${f.favourite ? 'text-lime' : 'text-white/25 hover:text-white/60'}`}
+                  title={f.favourite ? 'Unstar' : 'Star'} aria-label="Toggle favourite">
+                  <Star size={16} className={f.favourite ? 'fill-lime' : ''} />
+                </button>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={f.kind === 'bug' ? 'text-flame' : 'text-lime'}>
+                      {f.kind === 'bug' ? <Bug size={14} /> : <Lightbulb size={14} />}
+                    </span>
+                    <span className="text-sm text-white">{f.title}</span>
+                    <span className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      style={{ background: `${FB_STATUS_HEX[f.status]}1f`, color: FB_STATUS_HEX[f.status] }}>
+                      {FEEDBACK_STATUS_LABEL[f.status]}
+                    </span>
+                  </div>
+                  {f.detail && <p className="mt-1 text-[13px] leading-relaxed text-white/60">{f.detail}</p>}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2 text-[11px] text-white/35">
+                    <span>{f.author_name ?? 'Unknown'}{f.author_role ? ` · ${f.author_role}` : ''}</span>
+                    <span>·</span>
+                    <span>{fmtStamp(f.created_at)}</span>
+                    {f.area && <><span>·</span><span className="rounded-full bg-ink-700 px-2 py-0.5 text-white/50">{f.area}</span></>}
+                  </div>
+
+                  {f.admin_note && noteFor !== f.id && (
+                    <p className="mt-2 rounded-lg bg-ink-800 px-2.5 py-1.5 text-[12px] text-white/70">
+                      <span className="text-lime">Reply:</span> {f.admin_note}
+                    </p>
+                  )}
+
+                  {noteFor === f.id ? (
+                    <div className="mt-2 space-y-2">
+                      <textarea className="input h-20 resize-none text-[13px]" value={noteText} autoFocus
+                        placeholder="Reply to the submitter (they'll see this)…"
+                        onChange={e => setNoteText(e.target.value)} />
+                      <div className="flex justify-end gap-2">
+                        <button className="btn-ghost px-2.5 py-1 text-[11px]" onClick={() => setNoteFor(null)}>Cancel</button>
+                        <button className="btn-primary px-2.5 py-1 text-[11px]"
+                          onClick={async () => { await repo.updateFeedback(f.id, { admin_note: noteText.trim() || null }, actorId); setNoteFor(null) }}>
+                          Save reply
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                      <select className="input w-28 py-1 text-xs" value={f.priority}
+                        onChange={e => repo.updateFeedback(f.id, { priority: e.target.value as FeedbackPriority }, actorId)}>
+                        {FEEDBACK_PRIORITIES.map(p => <option key={p} value={p}>{FEEDBACK_PRIORITY_LABEL[p]}</option>)}
+                      </select>
+                      <select className="input w-32 py-1 text-xs" value={f.status}
+                        onChange={e => repo.updateFeedback(f.id, { status: e.target.value as FeedbackStatus }, actorId)}>
+                        {FEEDBACK_STATUSES.map(s => <option key={s} value={s}>{FEEDBACK_STATUS_LABEL[s]}</option>)}
+                      </select>
+                      <button className="btn-ghost px-2 py-1 text-[11px]"
+                        onClick={() => { setNoteFor(f.id); setNoteText(f.admin_note ?? '') }}>
+                        <MessageSquare size={13} /> {f.admin_note ? 'Edit reply' : 'Reply'}
+                      </button>
+                      <button className="btn-ghost px-2 py-1 text-[11px] text-flame" onClick={() => setDel(f)}>
+                        <Trash2 size={13} /> Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <Modal open={!!del} onClose={() => setDel(null)} title="Delete this submission">
+        {del && (
+          <div className="space-y-4">
+            <p className="text-sm text-white/70">
+              Permanently delete <span className="text-white">“{del.title}”</span>? This can’t be undone. To keep
+              it out of the active list without deleting, set its status to Dismissed instead.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button className="btn-ghost" onClick={() => setDel(null)}>Cancel</button>
+              <button className="btn-danger" onClick={async () => { await repo.deleteFeedback(del.id); setDel(null) }}>
+                <Trash2 size={15} /> Delete
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
   )
 }
