@@ -238,6 +238,42 @@ export default function MyWork() {
     if (stat === 'red' && !(i.status !== 'completed' && i.rag === 'red')) return false
     return true
   })
+  const listOpen = list.filter(i => i.status !== 'completed')
+  const listDone = list.filter(i => i.status === 'completed')
+
+  const ivCard = (i: InterventionView, idx: number) => {
+    const tint = categoryTint(i.category)
+    return (
+      <motion.div key={i.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: idx * 0.04 }}>
+        <Link to={`/beneficiaries/${i.beneficiary_id}`} className="card card-hover block p-5"
+          style={{ background: tint.bg, borderLeft: `3px solid ${tint.border}` }}>
+          <div className="flex items-start justify-between">
+            <div>
+              <div className="text-white" style={{ color: tint.text }}>{i.title}</div>
+              <div className="mt-0.5 text-xs text-white/40">{i.beneficiary_name} · {i.category}</div>
+            </div>
+            {i.status === 'completed'
+              ? <span className="inline-flex items-center gap-1.5 rounded-full bg-jade/15 px-2.5 py-1 text-[11px] text-jade"><CheckCircle2 size={12} /> Complete</span>
+              : <RagPill rag={i.rag} reason={i.rag_reason} />}
+          </div>
+          <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-white/40">
+            <span>{STATUS_LABEL[i.status]}</span>
+            {i.status === 'completed'
+              ? <span>Completed {timeAgo(i.completed_at ?? i.last_update_at)}</span>
+              : <span>Due {fmtDate(i.due_date)}</span>}
+            <span>Updated {timeAgo(i.last_update_at)}</span>
+          </div>
+          {i.days_awaiting !== null && i.status !== 'completed' && (
+            <div className="mt-3 flex items-center gap-1.5 text-[11px]"
+              style={{ color: i.days_awaiting >= 3 ? RAG_HEX.red : RAG_HEX.amber }}>
+              <Clock size={12} /> {i.days_awaiting}/3 working days awaiting beneficiary
+            </div>
+          )}
+        </Link>
+      </motion.div>
+    )
+  }
 
   if (loading) return <div className="text-white/40">Loading...</div>
 
@@ -581,36 +617,20 @@ export default function MyWork() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        {list.map((i, idx) => {
-          const tint = categoryTint(i.category)
-          return (
-            <motion.div key={i.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.04 }}>
-              <Link to={`/beneficiaries/${i.beneficiary_id}`} className="card card-hover block p-5"
-                style={{ background: tint.bg, borderLeft: `3px solid ${tint.border}` }}>
-                <div className="flex items-start justify-between">
-                  <div>
-                    <div className="text-white" style={{ color: tint.text }}>{i.title}</div>
-                    <div className="mt-0.5 text-xs text-white/40">{i.beneficiary_name} · {i.category}</div>
-                  </div>
-                  <RagPill rag={i.rag} reason={i.rag_reason} />
-                </div>
-                <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-white/40">
-                  <span>{STATUS_LABEL[i.status]}</span>
-                  <span>Due {fmtDate(i.due_date)}</span>
-                  <span>Updated {timeAgo(i.last_update_at)}</span>
-                </div>
-                {i.days_awaiting !== null && i.status !== 'completed' && (
-                  <div className="mt-3 flex items-center gap-1.5 text-[11px]"
-                    style={{ color: i.days_awaiting >= 3 ? RAG_HEX.red : RAG_HEX.amber }}>
-                    <Clock size={12} /> {i.days_awaiting}/3 working days awaiting beneficiary
-                  </div>
-                )}
-              </Link>
-            </motion.div>
-          )
-        })}
+        {listOpen.map((i, idx) => ivCard(i, idx))}
       </div>
+
+      {listDone.length > 0 && (
+        <div className="mt-8">
+          <div className="mb-3 flex items-center gap-2 text-sm text-white/60">
+            <CheckCircle2 size={16} className="text-jade" /> Completed
+            <span className="rounded-full bg-jade/15 px-2 py-0.5 text-[11px] text-jade">{listDone.length}</span>
+          </div>
+          <div className="grid gap-4 opacity-70 md:grid-cols-2">
+            {listDone.map((i, idx) => ivCard(i, idx))}
+          </div>
+        </div>
+      )}
       {list.length === 0 && <Empty text={mine.length === 0 ? 'Nothing assigned to you yet.' : 'No interventions match these filters.'} />}
 
       <Modal open={Boolean(viewEsc)} onClose={() => setViewEsc(null)} title="Escalation" wide>
