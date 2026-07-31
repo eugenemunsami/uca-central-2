@@ -82,7 +82,9 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 ## 5. Migrations (in `/supabase/migrations`, applied live)
 
 `0002` admin delete · `0003` live backend · `0004` user soft delete · `0005` escalation notifications ·
-`0006` live notifications/events/sweeps · `0007` onboarding · `0008` beneficiary company (funding lines).
+`0006` live notifications/events/sweeps · `0007` onboarding · `0008` beneficiary company (funding lines) ·
+`0009` welcome-party Teams URL · `0010` rag reason on completed · `0011` onboarding esc return ·
+`0012` realtime publication · `0013` discovery gate · `0014` user hidden_sections · `0015` feedback (Bugs & Ideas).
 
 ## 6. Key files
 
@@ -159,8 +161,8 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 - DONE: **Realtime** live sync (migration 0012 — 16 tables in supabase_realtime; repo.ts subscribes to postgres_changes and debounce-pings the reload). Clients auto-refresh, no manual refresh.
 - DONE: **Discovery-form gate** (migration 0013). New interventions carry `discovery_status` ('pending'|'cleared'|'incomplete'|'na') + optional `discovery_link`. After acknowledge, My Work shows a "Discovery check" section; Complete/NA start the work + timers, Incomplete waits (log follow-up / escalate). **SLA/RAG timers only start once discovery is cleared** — baked into `v_intervention_rag` AND the client `computeRag`. Existing interventions backfilled to 'na'. ManCo sets the link in Add Intervention.
 - DONE: **Admin section switches** (Option A, migration 0014). `profiles.hidden_sections text[]`; `TOGGLEABLE_SECTIONS` in types.ts; Layout filters nav by it; App.tsx route-guards hidden paths (redirect to /my-work); Admin Users tab has a "Sections" modal (`SectionsModal`) with per-section toggles. My Work / Portal always visible.
-- REMAINING: **Central Hub** — its own dedicated pass. A new bottom-left nav section that opens menu items: (1) "UCA Central Help" — an interactive user manual (content to be compiled, tailored per user profile); (2) "Bugs & Lightbulbs" — users log bugs/suggestions that land in an organised, browsable admin list with delete / prioritise / favourite. Needs a bugs/suggestions table + RLS, a repo layer, a new page, a nav entry above the user's name, and the manual content.
+- DONE: **Central Hub** (migration **0015**). New bottom-left nav entry "Central Hub" (`/central-hub`, all roles incl. external, always-on — deliberately NOT in TOGGLEABLE_SECTIONS). Page (`src/pages/CentralHub.tsx`) has two tabs: (1) **UCA Central Help** — an interactive, searchable, role-tailored accordion manual (`HELP_TOPICS` filtered by `role`; content covers navigation, dashboard, beneficiaries/funding lines, My Work, discovery gate, close-outs, onboarding, escalations, Portal/sign-off for external, Admin for managers, accounts); (2) **Bugs & Ideas** — bug/idea logger + the user's own submissions with live status. Backend: `feedback` table (kind bug|lightbulb, title, detail, area, status open|in_progress|resolved|dismissed, priority none|low|med|high, favourite, author snapshot, admin_note reply, resolved_at/by) + RLS (anyone inserts/sees/deletes own; ManCo/Exco see & manage all) + added to `supabase_realtime`. Repo: `feedback()`, `addFeedback`, `updateFeedback` (auto-stamps resolved_at/by), `deleteFeedback`; demo `db.feedback`. Admin gets a **"Bugs & Ideas"** tab (`FeedbackAdmin`) — filter by type/status/starred, set priority, star favourite, change status, reply (shown to submitter), delete. All live via realtime.
 
 **Open clarification still parked (to do at the very end):** what "**program**" means as a filter dimension on the Onboarding dashboard (ED vs SD, or something else?) — only blocks that one sub-item.
 
-**Migrations now through 0014.** Realtime is live, so any new operational table should be added to the supabase_realtime publication too.
+**Migrations now through 0015.** Realtime is live, so any new operational table should be added to the supabase_realtime publication too (the `feedback` table already is).
