@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, CalendarDays, Rocket, CheckCircle2, Ban, Search } from 'lucide-react'
+import { Plus, CalendarDays, Rocket, CheckCircle2, Ban, Search, Pencil, Trash2, Video } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
 import {
-  ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_OWNER_LABEL, ONB_STATUS_OWNER, type OnbStatus,
+  ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_OWNER_LABEL, ONB_STATUS_OWNER, type OnbStatus, type WelcomeParty,
 } from '../lib/types'
 import { Empty, Modal, Field, timeAgo, fmtDate } from '../components/ui'
 import OnboardingDetail, { OnbStatusPill } from '../components/OnboardingDetail'
@@ -16,6 +16,7 @@ export default function Onboarding() {
   const [viewId, setViewId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [partyOpen, setPartyOpen] = useState(false)
+  const [editParty, setEditParty] = useState<WelcomeParty | null>(null)
   const [q, setQ] = useState('')
 
   const internal = user?.role === 'manco' || user?.role === 'exco'
@@ -71,8 +72,29 @@ export default function Onboarding() {
               const invited = welcomePartyInvites.filter(i => i.welcome_party_id === w.id)
               return (
                 <div key={w.id} className="card p-4">
-                  <div className="text-white">{fmtDate(w.party_date)}</div>
-                  {w.title && <div className="text-xs text-white/40">{w.title}</div>}
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-white">{fmtDate(w.party_date)}</div>
+                      {w.title && <div className="text-xs text-white/40">{w.title}</div>}
+                    </div>
+                    {internal && (
+                      <div className="flex gap-1">
+                        <button className="text-white/30 hover:text-white" aria-label="Edit party" onClick={() => setEditParty(w)}>
+                          <Pencil size={13} />
+                        </button>
+                        <button className="text-white/30 hover:text-flame" aria-label="Delete party"
+                          onClick={() => { if (window.confirm(`Delete the welcome party on ${fmtDate(w.party_date)}? Any tickets on it will be detached.`)) repo.deleteWelcomeParty(w.id, user?.id ?? null) }}>
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  {w.teams_url && (
+                    <a href={w.teams_url} target="_blank" rel="noreferrer"
+                      className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-lime hover:text-white">
+                      <Video size={12} /> MS Teams registration
+                    </a>
+                  )}
                   <div className="mt-2 text-[11px] text-white/40">
                     {invited.length} invited · {invited.filter(i => i.status === 'attended').length} attended · {invited.filter(i => i.status === 'no_show').length} no-show
                   </div>
@@ -169,6 +191,7 @@ export default function Onboarding() {
 
       {creating && <CreateOnboarding sponsors={sponsors} aggregators={aggregators} onClose={() => setCreating(false)} />}
       {partyOpen && <CreateParty onClose={() => setPartyOpen(false)} />}
+      {editParty && <EditParty party={editParty} onClose={() => setEditParty(null)} />}
     </div>
   )
 }
@@ -234,12 +257,13 @@ function CreateParty({ onClose }: { onClose: () => void }) {
   const { user } = useAuth()
   const [date, setDate] = useState('')
   const [title, setTitle] = useState('')
+  const [teams, setTeams] = useState('')
   const [busy, setBusy] = useState(false)
 
   const save = async () => {
     if (!date) return
     setBusy(true)
-    await repo.createWelcomeParty({ party_date: date, title: title || null }, user?.id ?? null)
+    await repo.createWelcomeParty({ party_date: date, title: title || null, teams_url: teams || null }, user?.id ?? null)
     setBusy(false)
     onClose()
   }
@@ -248,9 +272,42 @@ function CreateParty({ onClose }: { onClose: () => void }) {
     <Modal open onClose={onClose} title="New welcome party">
       <Field label="Date (required)"><input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
       <Field label="Title"><input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Welcome Party — this week" /></Field>
+      <Field label="MS Teams registration link" hint="Sent to beneficiaries so they can register for the party.">
+        <input className="input" value={teams} onChange={e => setTeams(e.target.value)} placeholder="https://teams.microsoft.com/…" />
+      </Field>
       <div className="mt-1 flex justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn-primary" disabled={!date || busy} onClick={save}>Create</button>
+      </div>
+    </Modal>
+  )
+}
+
+function EditParty({ party, onClose }: { party: WelcomeParty; onClose: () => void }) {
+  const { user } = useAuth()
+  const [date, setDate] = useState(party.party_date)
+  const [title, setTitle] = useState(party.title ?? '')
+  const [teams, setTeams] = useState(party.teams_url ?? '')
+  const [busy, setBusy] = useState(false)
+
+  const save = async () => {
+    if (!date) return
+    setBusy(true)
+    await repo.updateWelcomeParty(party.id, { party_date: date, title: title || null, teams_url: teams || null }, user?.id ?? null)
+    setBusy(false)
+    onClose()
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Edit welcome party">
+      <Field label="Date (required)"><input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} /></Field>
+      <Field label="Title"><input className="input" value={title} onChange={e => setTitle(e.target.value)} placeholder="e.g. Welcome Party — this week" /></Field>
+      <Field label="MS Teams registration link" hint="Sent to beneficiaries so they can register for the party.">
+        <input className="input" value={teams} onChange={e => setTeams(e.target.value)} placeholder="https://teams.microsoft.com/…" />
+      </Field>
+      <div className="mt-1 flex justify-end gap-2">
+        <button className="btn-ghost" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" disabled={!date || busy} onClick={save}>Save changes</button>
       </div>
     </Modal>
   )
