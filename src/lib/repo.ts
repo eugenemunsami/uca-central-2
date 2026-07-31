@@ -1583,9 +1583,31 @@ export const repo = {
   },
 
   // Welcome party events.
-  async createWelcomeParty(input: { party_date: string; title?: string | null; notes?: string | null }, actorId: string | null) {
-    if (LIVE) { await supabase!.from('welcome_parties').insert({ party_date: input.party_date, title: input.title ?? null, notes: input.notes ?? null, created_by: actorId }); ping(); return }
-    db.welcomeParties.unshift({ id: uid(), party_date: input.party_date, title: input.title ?? null, notes: input.notes ?? null, created_by: actorId, created_at: new Date().toISOString() })
+  async createWelcomeParty(input: { party_date: string; title?: string | null; notes?: string | null; teams_url?: string | null }, actorId: string | null) {
+    if (LIVE) { await supabase!.from('welcome_parties').insert({ party_date: input.party_date, title: input.title ?? null, notes: input.notes ?? null, teams_url: input.teams_url ?? null, created_by: actorId }); ping(); return }
+    db.welcomeParties.unshift({ id: uid(), party_date: input.party_date, title: input.title ?? null, notes: input.notes ?? null, teams_url: input.teams_url ?? null, created_by: actorId, created_at: new Date().toISOString() })
+    ping()
+  },
+
+  // ManCo-only: edit a welcome party's date / title / Teams link.
+  async updateWelcomeParty(id: string, patch: { party_date?: string; title?: string | null; teams_url?: string | null }, _actorId: string | null) {
+    if (LIVE) { await supabase!.from('welcome_parties').update(patch).eq('id', id); ping(); return }
+    const i = db.welcomeParties.findIndex(w => w.id === id); if (i < 0) return
+    db.welcomeParties[i] = { ...db.welcomeParties[i], ...patch }
+    ping()
+  },
+
+  // ManCo-only: delete a welcome party. Detaches any tickets still pointing at it and clears its invites first.
+  async deleteWelcomeParty(id: string, _actorId: string | null) {
+    if (LIVE) {
+      await supabase!.from('onboardings').update({ welcome_party_id: null }).eq('welcome_party_id', id)
+      await supabase!.from('welcome_party_invites').delete().eq('welcome_party_id', id)
+      await supabase!.from('welcome_parties').delete().eq('id', id)
+      ping(); return
+    }
+    db.onboardings.forEach((o, i) => { if (o.welcome_party_id === id) db.onboardings[i] = { ...o, welcome_party_id: null } })
+    db.welcomePartyInvites = db.welcomePartyInvites.filter(v => v.welcome_party_id !== id)
+    db.welcomeParties = db.welcomeParties.filter(w => w.id !== id)
     ping()
   },
 }
