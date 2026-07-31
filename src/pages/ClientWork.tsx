@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Flame, CheckCheck, Inbox, ClipboardCheck, ExternalLink, CornerUpLeft, Lock } from 'lucide-react'
+import { Bell, Flame, CheckCheck, Inbox, ClipboardCheck, ExternalLink, CornerUpLeft, Lock, Rocket } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { repo } from '../lib/repo'
 import { RAG_HEX } from '../lib/rag'
-import type { BeneficiaryView } from '../lib/types'
+import { ONB_STATUS_OWNER, ONB_OWNER_LABEL, ONB_TERMINAL, type BeneficiaryView } from '../lib/types'
 import { Empty, Field, Modal, StatCard, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
+import { OnbStatusPill } from '../components/OnboardingDetail'
 
 // Modal body for reviewing a beneficiary close-out sent to the client.
 // Acknowledging concludes the job; sending back returns it to UCA to fix.
@@ -101,8 +102,17 @@ function CloseoutReview({ ben, userId, onDone }: {
 }
 
 export default function ClientWork() {
-  const { beneficiaries, escalations, notifications, loading } = useData()
+  const { beneficiaries, escalations, notifications, onboardings, loading } = useData()
   const { user } = useAuth()
+
+  // Read-only awareness of the onboarding pipeline for this aggregator/sponsor's cases.
+  const myOnboarding = useMemo(() =>
+    onboardings.filter(o =>
+      !ONB_TERMINAL.includes(o.status) &&
+      ((user?.external_sponsor_id && o.sponsor_id === user.external_sponsor_id) ||
+        (user?.external_client_id && o.client_id === user.external_client_id)))
+      .sort((a, b) => b.last_action_at.localeCompare(a.last_action_at)),
+    [onboardings, user])
   const [openId, setOpenId] = useState<string | null>(null)
   const [reviewId, setReviewId] = useState<string | null>(null)
   const [bellOpen, setBellOpen] = useState(false)
@@ -226,6 +236,32 @@ export default function ClientWork() {
         <StatCard label="Resolved" value={resolvedMine.length} accent={RAG_HEX.green}
           icon={<CheckCheck size={18} />} delay={0.15} />
       </div>
+
+      {myOnboarding.length > 0 && (
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.06 }}
+          className="rounded-2xl border border-ink-500 bg-ink-800/40 p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <Rocket size={16} className="text-lime" />
+            <h2 className="text-sm text-white">Onboarding pipeline</h2>
+            <span className="rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">{myOnboarding.length}</span>
+          </div>
+          <p className="mb-3 text-xs text-white/50">Where your beneficiaries are in the pre-SOW journey. View-only — UCA records each step.</p>
+          <div className="space-y-2">
+            {myOnboarding.map(o => (
+              <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-900/50 p-3">
+                <div className="text-sm text-white/80">
+                  <span className="text-white">{o.name}</span>
+                  <span className="text-white/40"> · {o.sponsor_name}</span>
+                  <div className="mt-0.5 text-[11px] text-white/40">
+                    With {ONB_OWNER_LABEL[ONB_STATUS_OWNER[o.status]]} · last action {timeAgo(o.last_action_at)}
+                  </div>
+                </div>
+                <OnbStatusPill status={o.status} />
+              </div>
+            ))}
+          </div>
+        </motion.section>
+      )}
 
       {/* Close-outs to review — prominent, sits alongside escalations */}
       <motion.section

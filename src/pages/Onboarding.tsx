@@ -119,8 +119,11 @@ export default function Onboarding() {
             const rows = sortByAction(active.filter(o => o.status === status))
             if (rows.length === 0) return null
             return (
-              <div key={status} className="space-y-2">
-                <div className="label">{ONB_STATUS_LABEL[status as OnbStatus]}</div>
+              <div key={status} className="space-y-2 rounded-xl border border-ink-600/60 bg-ink-800/30 p-3">
+                <div className="flex items-center gap-2">
+                  <div className="label">{ONB_STATUS_LABEL[status as OnbStatus]}</div>
+                  <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-white/50">{rows.length}</span>
+                </div>
                 {rows.map((o, i) => (
                   <motion.div key={o.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.03 }}
