@@ -1,7 +1,7 @@
 import { LIVE, supabase } from './supabase'
 import * as seed from './demo'
 import { computeRag, worst } from './rag'
-import { ONB_STATUS_OWNER } from './types'
+import { ONB_STATUS_OWNER, ONB_ESC_STATUSES, ONB_TERMINAL, ONB_OWNER_LABEL } from './types'
 import type {
   Aggregator, Beneficiary, BeneficiaryEvent, BeneficiaryView, CatalogueItem, Comm, Escalation,
   EscalationEvent, EscalationView, EscStatus, EscSuggestion, Intervention, InterventionView,
@@ -1596,6 +1596,25 @@ export const repo = {
   async onbEscReturn(id: string, actorId: string | null, note: string) {
     const o = await repo._getOnb(id); if (!o) return
     await repo._onbApply(o, actorId, 'esc_returned', 'remediation_visit', {}, note || 'Returned by the Aggregator/Sponsor with guidance.', `${o.name}: escalation returned — continue the site-visit effort.`)
+  },
+
+  // Direct escalation from ANY active stage straight to the Aggregator/Sponsor (no ManCo approval).
+  // Remembers the stage so resolution returns the ticket to exactly where it left off.
+  async onbRaiseToSponsor(id: string, actorId: string | null, reason: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    if (ONB_ESC_STATUSES.includes(o.status) || ONB_TERMINAL.includes(o.status)) return
+    await repo._onbApply(o, actorId, 'escalated_sponsor', 'esc_sponsor',
+      { esc_return_status: o.status }, `Escalated to the Aggregator/Sponsor: ${reason}`,
+      `Onboarding escalation — ${o.name} is with the Aggregator/Sponsor.`)
+  },
+  // Aggregator/Sponsor resolves the escalation -> ticket returns directly to the originating stage.
+  async onbResolveEscalation(id: string, actorId: string | null, note: string) {
+    const o = await repo._getOnb(id); if (!o) return
+    if (o.status !== 'esc_sponsor') return
+    const back = (o.esc_return_status ?? 'remediation_visit') as OnbStatus
+    await repo._onbApply(o, actorId, 'esc_resolved', back,
+      { esc_return_status: null }, note || 'Resolved by the Aggregator/Sponsor.',
+      `${o.name}: escalation resolved — back with ${ONB_OWNER_LABEL[ONB_STATUS_OWNER[back]]}.`)
   },
 
   async addOnbNote(id: string, actorId: string | null, text: string) {
