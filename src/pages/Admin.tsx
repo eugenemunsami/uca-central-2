@@ -594,7 +594,7 @@ export default function Admin() {
                             onClick={() => setActivityUser(p)}>
                             <History size={13} /> Activity
                           </button>
-                          {isManco && p.role !== 'external' && (
+                          {isManco && (
                             <button className="btn-ghost px-2 py-1 text-[11px]" onClick={() => setSectionsUser(p)}>
                               <ToggleRight size={13} /> Sections
                             </button>
