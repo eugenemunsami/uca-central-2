@@ -487,6 +487,7 @@ export interface WelcomeParty {
   party_date: string
   title?: string | null
   notes?: string | null
+  teams_url?: string | null        // MS Teams registration link, shown on the party card
   created_by?: string | null
   created_at: string
 }
