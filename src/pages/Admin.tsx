@@ -8,7 +8,7 @@ import { useData } from '../lib/useData'
 import { repo, subscribe } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
 import type { BeneficiaryView, InterventionView, Profile, Role, UserStatus } from '../lib/types'
-import { LIFECYCLE_LABEL, STATUS_LABEL, USER_EVENT_LABEL, USER_STATUS_LABEL } from '../lib/types'
+import { LIFECYCLE_LABEL, STATUS_LABEL, USER_EVENT_LABEL, USER_STATUS_LABEL, TOGGLEABLE_SECTIONS } from '../lib/types'
 import { Empty, Field, Modal, RagPill } from '../components/ui'
 import { categoryTint } from '../lib/palette'
 
@@ -66,6 +66,7 @@ export default function Admin() {
   const [agg, setAgg] = useState({ name: '' })
   const [spo, setSpo] = useState({ name: '', aggregator_id: '' })
   const [activityUser, setActivityUser] = useState<Profile | null>(null)
+  const [sectionsUser, setSectionsUser] = useState<Profile | null>(null)
   const [activate, setActivate] = useState<Profile | null>(null)
   const [actForm, setActForm] = useState({ password: '', terms: false })
 
@@ -593,6 +594,11 @@ export default function Admin() {
                             onClick={() => setActivityUser(p)}>
                             <History size={13} /> Activity
                           </button>
+                          {isManco && p.role !== 'external' && (
+                            <button className="btn-ghost px-2 py-1 text-[11px]" onClick={() => setSectionsUser(p)}>
+                              <ToggleRight size={13} /> Sections
+                            </button>
+                          )}
                           {isManco && !removed && (st === 'pending' || st === 'invitation_expired') && (
                             <>
                               <button className="btn-ghost px-2 py-1 text-[11px]"
@@ -905,6 +911,11 @@ export default function Admin() {
         })()}
       </Modal>
 
+      {/* Per-user section visibility switches */}
+      {sectionsUser && (
+        <SectionsModal key={sectionsUser.id} p={sectionsUser} actorId={user?.id ?? null} onClose={() => setSectionsUser(null)} />
+      )}
+
       {/* Permanent-delete confirmation (type-to-confirm) */}
       <Modal open={!!del} onClose={() => { setDel(null); setDelText(''); setDelErr(null) }} title="Delete permanently">
         {del && (
@@ -947,5 +958,40 @@ export default function Admin() {
         )}
       </Modal>
     </div>
+  )
+}
+
+// Per-user section visibility (Option A): switches only HIDE sections the user's role already
+// permits. hidden_sections holds the keys turned OFF; empty = everything their role allows is shown.
+function SectionsModal({ p, actorId, onClose }: { p: Profile; actorId: string | null; onClose: () => void }) {
+  const [hidden, setHidden] = useState<string[]>(p.hidden_sections ?? [])
+  const sections = TOGGLEABLE_SECTIONS.filter(s => s.roles.includes(p.role))
+  const toggle = (key: string) => {
+    const next = hidden.includes(key) ? hidden.filter(k => k !== key) : [...hidden, key]
+    setHidden(next)
+    repo.setUserHiddenSections(p.id, next, actorId)
+  }
+  return (
+    <Modal open onClose={onClose} title={`Sections — ${p.full_name}`}>
+      <p className="mb-4 text-sm text-white/50">
+        Turn a section off to hide it for this user when they log in. Their role is the ceiling — you can only
+        hide sections their role already sees. My Work is always available.
+      </p>
+      <div className="space-y-2">
+        {sections.length === 0 && <Empty text="This role has no toggleable sections." />}
+        {sections.map(s => {
+          const on = !hidden.includes(s.key)
+          return (
+            <div key={s.key} className="flex items-center justify-between rounded-lg bg-ink-800 px-3 py-2.5">
+              <span className="text-sm text-white/80">{s.label}</span>
+              <button onClick={() => toggle(s.key)} className={on ? 'text-lime' : 'text-white/25'}
+                aria-label={`${on ? 'Hide' : 'Show'} ${s.label}`}>
+                {on ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </Modal>
   )
 }
