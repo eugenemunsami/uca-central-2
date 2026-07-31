@@ -73,6 +73,16 @@ export default function Dashboard() {
   const open = escalations.filter(e => e.status !== 'resolved')
   const onHold = interventions.filter(i => i.status === 'on_hold' || i.status === 'awaiting_beneficiary')
 
+  // Open interventions grouped by type (e.g. "5-page website", "Business card design"), scoped to
+  // the selected client filter. Long type names are shown in full on a horizontal bar chart.
+  const scopedIds = new Set(scoped.map(b => b.id))
+  const openByType = Object.entries(
+    interventions
+      .filter(i => i.status !== 'completed' && !i.cancelled && scopedIds.has(i.beneficiary_id))
+      .reduce((m, i) => { m[i.title] = (m[i.title] ?? 0) + 1; return m }, {} as Record<string, number>),
+  ).map(([name, count]) => ({ name, count })).sort((a, z) => z.count - a.count)
+  const noInterventions = scoped.filter(b => b.intervention_count === 0).length
+
   if (loading) return <div className="text-white/40">Loading...</div>
 
   return (
@@ -123,7 +133,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Live beneficiaries" value={scoped.length} icon={<Users size={20} />}
           sub={`${interventions.filter(i => i.status !== 'completed').length} open interventions`} delay={0} />
         <StatCard label="On track" value={counts.green} accent={RAG_HEX.green} icon={<TrendingUp size={20} />}
@@ -132,6 +142,8 @@ export default function Dashboard() {
           sub={`${onHold.length} blocked interventions`} delay={0.1} />
         <StatCard label="Escalate to client" value={counts.red} accent={RAG_HEX.red} icon={<AlertTriangle size={20} />}
           sub={`${open.length} open escalations`} delay={0.15} />
+        <StatCard label="No interventions yet" value={noInterventions} accent="#7F77DD" icon={<Ban size={20} />}
+          sub="beneficiaries awaiting scoping" delay={0.2} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
@@ -186,6 +198,25 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </motion.div>
       </div>
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
+        className="card p-5">
+        <div className="label mb-3">Open interventions by type</div>
+        {openByType.length === 0 ? (
+          <Empty text="No open interventions in this view." />
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(140, openByType.length * 30)}>
+            <BarChart data={openByType} layout="vertical" margin={{ left: 12, right: 24 }}>
+              <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false}
+                tick={{ fill: '#ffffff44', fontSize: 11 }} />
+              <YAxis type="category" dataKey="name" width={220} tickLine={false} axisLine={false}
+                tick={{ fill: '#ffffff99', fontSize: 11 }} interval={0} />
+              <Tooltip {...tip} cursor={{ fill: '#ffffff08' }} />
+              <Bar dataKey="count" fill="#5E8C1E" radius={[0, 4, 4, 0]} animationDuration={900} barSize={16} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </motion.div>
 
       {open.length > 0 && (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.35 }}
