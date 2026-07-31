@@ -16,6 +16,7 @@ import Admin from './pages/Admin'
 import Portal from './pages/Portal'
 import ClientWork from './pages/ClientWork'
 import CentralHub from './pages/CentralHub'
+import Archive2025 from './pages/Archive2025'
 
 export default function App() {
   const { user, loading, recovery } = useAuth()
@@ -49,6 +50,7 @@ export default function App() {
           {!portalHidden && <Route path="/portal" element={<Portal />} />}
           <Route path="/my-work" element={<ClientWork />} />
           <Route path="/central-hub" element={<CentralHub />} />
+          <Route path="/archive-2025" element={<Archive2025 />} />
           {agg && <Route path="/" element={<Dashboard />} />}
           {agg && <Route path="/beneficiaries" element={<Beneficiaries />} />}
           {agg && <Route path="/beneficiaries/:id" element={<ClientBeneficiaryDetail />} />}
@@ -76,6 +78,7 @@ export default function App() {
         <Route path="/escalations" element={<Escalations />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/central-hub" element={<CentralHub />} />
+        <Route path="/archive-2025" element={<Archive2025 />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

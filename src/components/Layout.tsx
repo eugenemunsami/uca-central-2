@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket, LifeBuoy,
+  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket, LifeBuoy, Archive,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -67,6 +67,15 @@ export default function Layout({ children }: { children: ReactNode }) {
             }>
             <LifeBuoy size={17} />
             Central Hub
+          </NavLink>
+          <NavLink to="/archive-2025"
+            className={({ isActive }) =>
+              `group relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+                isActive ? 'bg-lime-soft text-lime' : 'text-white/50 hover:bg-ink-700 hover:text-white'
+              }`
+            }>
+            <Archive size={17} />
+            2025 Archive
           </NavLink>
         </div>
         <div className="mt-3 border-t border-ink-600 pt-4">

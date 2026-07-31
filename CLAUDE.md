@@ -87,7 +87,8 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 `0012` realtime publication · `0013` discovery gate · `0014` user hidden_sections · `0015` feedback (Bugs & Ideas) ·
 `0016` external aggregator access (scoped onboarding read + sponsor-act; onboarding/party RLS relaxed to my_sponsors) ·
 `0017` intervention_catalogue readable by external (so v_intervention_rag can label titles/categories in the client view) ·
-`0018` app_notify_onb_sponsor (notify the Aggregator/Sponsor account(s) when an onboarding ticket is escalated to them).
+`0018` app_notify_onb_sponsor (notify the Aggregator/Sponsor account(s) when an onboarding ticket is escalated to them) ·
+`0019` archive_2025_jobs (TEMPORARY, fully isolated "2025 Archive" table — see §13).
 
 ## 6. Key files
 
@@ -172,4 +173,27 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Onboarding escalation note:** the generic **Escalate to Aggregator/Sponsor** button (repo `onbRaiseToSponsor` → status `esc_sponsor`, remembers `esc_return_status`) is available to ALL internal staff who own a ticket — exco, manco AND **consultants** — at any non-esc stage (this was briefly manco/exco-only during the aggregator build; restored via `staff = role!=='external'` in OnboardingDetail). External (sponsor) users don't see it (can't escalate to themselves). On reaching `esc_sponsor`, `_onbApply` now also calls `app_notify_onb_sponsor` so the sponsor ACCOUNT(s) get an action-required notification (they have no user id in `participants`).
 
-**Migrations now through 0018.** Realtime is live, so any new operational table should be added to the supabase_realtime publication too (the `feedback` table already is). Note: v_*_rag views are `security_invoker`, so any table they JOIN for labels (e.g. `intervention_catalogue`) must be READABLE by whichever role should see those labels — else the COALESCE fallback shows generic text (this was the "Intervention/-" bug fixed in 0017).
+**Migrations now through 0019.**
+
+## 13. 2025 Archive (TEMPORARY — removable, fully isolated)
+
+BEE123 asked for line of sight into the 2025 (FY25) projects. Built as a standalone section that **shares
+nothing with the rest of Central** — no existing table/view/function/RLS policy/realtime channel is
+touched, and no shared module (repo.ts, useData) is imported. Rollback point: branch
+**`checkpoint-pre-2025-archive`** (at commit `1ea0174`, the state just before this feature).
+
+- **DB:** table **`archive_2025_jobs`** (migration `0019`), one row per intervention, grouped in the UI
+  by `beneficiary_key`. Columns incl. `status` (Not Started | In Progress | Complete: To Send Report |
+  Closed), `rag` (green/amber/red), `latest_comment` (+ updated_at/by), `category`, `invoice`, `owner`,
+  `source` (creative|finance), `sort`. RLS: **read = any signed-in user (internal AND external)**;
+  **update = internal staff (`is_internal`)**; insert/delete = manco. NOT in the realtime publication.
+  Seeded (70 jobs / 41 beneficiaries) from the two BEE123 FY25 spreadsheets via `supabase/seed_2025_archive.sql`.
+- **Frontend:** `src/lib/archive2025.ts` (self-contained fetch/update + embedded demo seed
+  `archive2025.seed.json`), `src/pages/Archive2025.tsx` (beneficiary-grouped cards, per-intervention
+  edit modal for status/RAG/comment — internal only; external read-only), nav entry "2025 Archive"
+  (all roles, bottom of sidebar next to Central Hub), route `/archive-2025` in both App.tsx branches.
+  Filters: search (beneficiary), intervention type, status, RAG.
+- **To remove later:** `drop table archive_2025_jobs;` + delete Archive2025 page/module/seed + the nav
+  entry + the two `/archive-2025` routes (or git-revert the feature commits / reset to the checkpoint branch).
+
+ Realtime is live, so any new operational table should be added to the supabase_realtime publication too (the `feedback` table already is). Note: v_*_rag views are `security_invoker`, so any table they JOIN for labels (e.g. `intervention_catalogue`) must be READABLE by whichever role should see those labels — else the COALESCE fallback shows generic text (this was the "Intervention/-" bug fixed in 0017).
