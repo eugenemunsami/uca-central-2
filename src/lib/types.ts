@@ -45,7 +45,19 @@ export interface Profile {
   terms_accepted_at?: string | null
   removed_at?: string | null               // admin soft-hide: hidden app-wide but kept in the database, restorable
   removed_by?: string | null
+  hidden_sections?: string[]               // section keys an admin has turned OFF for this user (Option A)
 }
+
+// Sections an admin can toggle per user (visibility layer on top of roles). My Work / Portal are the
+// user's own workspace and are always visible, so they aren't listed here.
+export const TOGGLEABLE_SECTIONS: { key: string; label: string; path: string; roles: Role[] }[] = [
+  { key: 'dashboard', label: 'Dashboard', path: '/', roles: ['exco', 'manco', 'consultant'] },
+  { key: 'beneficiaries', label: 'Beneficiaries', path: '/beneficiaries', roles: ['exco', 'manco', 'consultant'] },
+  { key: 'onboarding', label: 'Onboarding', path: '/onboarding', roles: ['exco', 'manco', 'consultant'] },
+  { key: 'huddle', label: 'The Huddle', path: '/huddle', roles: ['exco', 'manco', 'consultant'] },
+  { key: 'escalations', label: 'Escalations', path: '/escalations', roles: ['exco', 'manco', 'consultant'] },
+  { key: 'admin', label: 'Admin', path: '/admin', roles: ['exco', 'manco'] },
+]
 
 // Org structure: an Aggregator (e.g. BEE123) sits on top and can have many
 // Sponsors under it. A Sponsor can also stand alone (aggregator_id = null).
