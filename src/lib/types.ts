@@ -57,6 +57,7 @@ export const TOGGLEABLE_SECTIONS: { key: string; label: string; path: string; ro
   { key: 'huddle', label: 'The Huddle', path: '/huddle', roles: ['exco', 'manco', 'consultant'] },
   { key: 'escalations', label: 'Escalations', path: '/escalations', roles: ['exco', 'manco', 'consultant'] },
   { key: 'admin', label: 'Admin', path: '/admin', roles: ['exco', 'manco'] },
+  { key: 'portal', label: 'Portal', path: '/portal', roles: ['external'] },
 ]
 
 // Org structure: an Aggregator (e.g. BEE123) sits on top and can have many
