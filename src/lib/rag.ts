@@ -1,4 +1,4 @@
-import type { Intervention, Rag, WeeklyUpdate, Escalation } from './types'
+import { DISCOVERY_DONE, type Intervention, type Rag, type WeeklyUpdate, type Escalation } from './types'
 
 export const RAG_HEX: Record<Rag, string> = { green: '#9FD150', amber: '#F5B942', red: '#EE4823' }
 export const RAG_LABEL: Record<Rag, string> = { green: 'Green', amber: 'Amber', red: 'Red' }
@@ -45,6 +45,9 @@ export function computeRag(
   // Awaiting ManCo close-out confirmation: work is done, treat as on track.
   if (iv.closeout_status === 'requested') return { rag: 'green', reason: 'Close-out awaiting ManCo confirmation', daysAwaiting, lastUpdateAt }
   if (openEsc) return { rag: 'red', reason: openEsc.reason, daysAwaiting, lastUpdateAt }
+  // Timers don't start until the discovery form is confirmed done (cleared / not applicable).
+  if (iv.discovery_status && !DISCOVERY_DONE.includes(iv.discovery_status))
+    return { rag: 'green', reason: 'Awaiting discovery form', daysAwaiting, lastUpdateAt }
   if (iv.response_extended_until && new Date(iv.response_extended_until) > now) {
     const until = new Date(iv.response_extended_until).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })
     return { rag: 'amber', reason: `Allowable delay granted until ${until}`, daysAwaiting, lastUpdateAt }
