@@ -15,7 +15,7 @@ const nav = [
   { to: '/my-work', label: 'My work', icon: Briefcase, roles: ['external'] },
   { to: '/huddle', label: 'The Huddle', icon: CalendarDays, roles: ['exco', 'manco', 'consultant'], key: 'huddle' },
   { to: '/escalations', label: 'Escalations', icon: AlertTriangle, roles: ['exco', 'manco', 'consultant'], key: 'escalations' },
-  { to: '/portal', label: 'Portal', icon: Building2, roles: ['external'] },
+  { to: '/portal', label: 'Portal', icon: Building2, roles: ['external'], key: 'portal' },
   { to: '/admin', label: 'Admin', icon: Settings, roles: ['exco', 'manco'], key: 'admin' },
 ]
 
