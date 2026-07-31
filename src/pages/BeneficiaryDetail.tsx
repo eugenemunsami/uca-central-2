@@ -1009,6 +1009,7 @@ function AddIntervention({ open, onClose, beneficiaryId, catalogue, people }: {
   const [catId, setCatId] = useState('')
   const [consultant, setConsultant] = useState('')
   const [due, setDue] = useState('')
+  const [discoveryLink, setDiscoveryLink] = useState('')
   const [custom, setCustom] = useState({ name: '', kind: 'capex', budget: '', motivation: '' })
 
   const grouped = useMemo(() => {
@@ -1086,6 +1087,11 @@ function AddIntervention({ open, onClose, beneficiaryId, catalogue, people }: {
         </Field>
       </div>
 
+      <Field label="Discovery form link" hint="The Google Form (from the SOW) the beneficiary fills for this intervention. Leave blank if there's no discovery form.">
+        <input className="input" placeholder="https://forms.gle/…" value={discoveryLink}
+          onChange={e => setDiscoveryLink(e.target.value)} />
+      </Field>
+
       <div className="flex justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
         <button className="btn-primary"
@@ -1101,11 +1107,12 @@ function AddIntervention({ open, onClose, beneficiaryId, catalogue, people }: {
               custom_motivation: tab === 'custom' ? custom.motivation : null,
               consultant_id: consultant || null,
               due_date: due || null,
+              discovery_link: discoveryLink || null,
               status: 'not_started',
               start_date: new Date().toISOString().slice(0, 10),
             })
             onClose()
-            setCatId(''); setDue(''); setCustom({ name: '', kind: 'capex', budget: '', motivation: '' })
+            setCatId(''); setDue(''); setDiscoveryLink(''); setCustom({ name: '', kind: 'capex', budget: '', motivation: '' })
           }}>
           Add to scope
         </button>
