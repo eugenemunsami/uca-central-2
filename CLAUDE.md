@@ -155,6 +155,12 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Batch B — NEXT (not started):** dashboard open-interventions-by-type chart + beneficiaries-with-no-interventions count card; Beneficiaries no-interventions view + implementation/completed/unassigned toggle; My Work completed-vs-ongoing split + fix closed/verified interventions still showing "past due"; Onboarding contemporary sectioned layout; onboarding ownership surfaced in each owner's My Work (incl. external + consultant) with notifications; onboarding escalate at any stage (direct consultant/ManCo ↔ aggregator sponsor, no ManCo approval).
 
-**Batch C — parked (big, design-first):** Realtime; the acknowledge → discovery-link gate + timer-start change; Admin section switches (Option A); Central Hub.
+**Batch C — status:**
+- DONE: **Realtime** live sync (migration 0012 — 16 tables in supabase_realtime; repo.ts subscribes to postgres_changes and debounce-pings the reload). Clients auto-refresh, no manual refresh.
+- DONE: **Discovery-form gate** (migration 0013). New interventions carry `discovery_status` ('pending'|'cleared'|'incomplete'|'na') + optional `discovery_link`. After acknowledge, My Work shows a "Discovery check" section; Complete/NA start the work + timers, Incomplete waits (log follow-up / escalate). **SLA/RAG timers only start once discovery is cleared** — baked into `v_intervention_rag` AND the client `computeRag`. Existing interventions backfilled to 'na'. ManCo sets the link in Add Intervention.
+- DONE: **Admin section switches** (Option A, migration 0014). `profiles.hidden_sections text[]`; `TOGGLEABLE_SECTIONS` in types.ts; Layout filters nav by it; App.tsx route-guards hidden paths (redirect to /my-work); Admin Users tab has a "Sections" modal (`SectionsModal`) with per-section toggles. My Work / Portal always visible.
+- REMAINING: **Central Hub** — its own dedicated pass. A new bottom-left nav section that opens menu items: (1) "UCA Central Help" — an interactive user manual (content to be compiled, tailored per user profile); (2) "Bugs & Lightbulbs" — users log bugs/suggestions that land in an organised, browsable admin list with delete / prioritise / favourite. Needs a bugs/suggestions table + RLS, a repo layer, a new page, a nav entry above the user's name, and the manual content.
 
-**Open clarification still needed:** what "**program**" means as a filter dimension on the Onboarding dashboard (ED vs SD, or something else?) — only blocks that one sub-item.
+**Open clarification still parked (to do at the very end):** what "**program**" means as a filter dimension on the Onboarding dashboard (ED vs SD, or something else?) — only blocks that one sub-item.
+
+**Migrations now through 0014.** Realtime is live, so any new operational table should be added to the supabase_realtime publication too.
