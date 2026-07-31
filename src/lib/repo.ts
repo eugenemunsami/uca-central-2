@@ -511,6 +511,15 @@ export const repo = {
         await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'closeout_requested', p_text: info.title + ' — files uploaded, close-out email sent.' })
         await supabase!.rpc('app_notify_manco', { p_kind: 'closeout_requested', p_text: `Close-out to verify: ${info.beneficiary_name} — ${info.title}.`, p_action: true })
       } catch { /* side-effects best-effort */ }
+      // Record the close-out email in the Communication Log (and, via the timeline, Activity History).
+      if (info && (opts?.email_sent || opts?.email_text)) {
+        await repo.addComm({
+          beneficiary_id: info.beneficiary_id, intervention_id: id, author_id: userId,
+          channel: 'email', occurred_at: new Date().toISOString(),
+          context: `Close-out email sent — ${info.title}`, followed_up_by_email: false,
+          email_text: opts?.email_text ?? null,
+        })
+      }
       ping(); return
     }
     const iv = db.interventions.find(i => i.id === id)
@@ -518,6 +527,14 @@ export const repo = {
       pushBenEvent(iv.beneficiary_id, userId, 'closeout_requested', repo._ivTitle(iv) + ' — files uploaded, close-out email sent.')
       db.profiles.filter(p => p.role === 'manco' || p.role === 'exco').forEach(p =>
         notify([p.id], 'closeout_requested', `Close-out to verify: ${repo._benName(iv.beneficiary_id)} — ${repo._ivTitle(iv)}.`, ''))
+      if (opts?.email_sent || opts?.email_text) {
+        await repo.addComm({
+          beneficiary_id: iv.beneficiary_id, intervention_id: id, author_id: userId,
+          channel: 'email', occurred_at: new Date().toISOString(),
+          context: `Close-out email sent — ${repo._ivTitle(iv)}`, followed_up_by_email: false,
+          email_text: opts?.email_text ?? null,
+        })
+      }
     }
   },
 
