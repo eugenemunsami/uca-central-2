@@ -7,7 +7,7 @@ import type {
   EscalationEvent, EscalationView, EscStatus, EscSuggestion, Intervention, InterventionView,
   Notification, Profile, Rag, RagOverride, Role, Sponsor, UserEvent, UserStatus, WeeklyUpdate,
   Onboarding, OnboardingEvent, OnboardingView, OnbStatus, OnbOwnerRole, OnbEventKind,
-  WelcomeParty, WelcomePartyInvite,
+  WelcomeParty, WelcomePartyInvite, Feedback,
 } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -31,6 +31,7 @@ const db = {
   welcomeParties: [...seed.welcomeParties],
   welcomePartyInvites: [...seed.welcomePartyInvites],
   onboardingEvents: [...seed.onboardingEvents],
+  feedback: [] as Feedback[],
 }
 
 const listeners = new Set<() => void>()
@@ -52,7 +53,7 @@ if (LIVE && supabase) {
   const REALTIME_TABLES = [
     'beneficiaries', 'interventions', 'weekly_updates', 'comms_log', 'escalations', 'escalation_events',
     'beneficiary_events', 'user_events', 'notifications', 'rag_overrides', 'onboardings', 'onboarding_events',
-    'welcome_parties', 'welcome_party_invites', 'profiles', 'intervention_catalogue',
+    'welcome_parties', 'welcome_party_invites', 'profiles', 'intervention_catalogue', 'feedback',
   ]
   for (const table of REALTIME_TABLES) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, refreshSoon)
@@ -1383,6 +1384,66 @@ export const repo = {
     } else {
       pushUserEvent(id, byUserId, 'role_changed', `Role changed from ${prev} to ${role}.`)
     }
+    ping()
+  },
+
+  // ================= Feedback (Central Hub → Bugs & Lightbulbs) =================
+  // Live RLS scopes reads: a regular user gets only their own rows, managers get everything.
+  // The page filters by author for "your submissions", so the same call serves both.
+  async feedback(): Promise<Feedback[]> {
+    if (!LIVE) return [...db.feedback].sort((a, z) => z.created_at.localeCompare(a.created_at))
+    return sb<Feedback[]>(() =>
+      supabase!.from('feedback').select('*').order('created_at', { ascending: false }) as never)
+  },
+
+  // Any signed-in user (internal or external) logs a bug or an idea. author_* are snapshotted so the
+  // admin list reads without a join and survives the author later being deleted.
+  async addFeedback(
+    input: { kind: Feedback['kind']; title: string; detail?: string | null; area?: string | null },
+    author: { id: string | null; name?: string | null; role?: Role | null },
+  ) {
+    const row: Feedback = {
+      id: uid(), kind: input.kind, title: input.title.trim(),
+      detail: input.detail?.trim() || null, area: input.area?.trim() || null,
+      status: 'open', priority: 'none', favourite: false,
+      author_id: author.id, author_name: author.name ?? null, author_role: author.role ?? null,
+      admin_note: null, resolved_at: null, resolved_by: null,
+      created_at: new Date().toISOString(),
+    }
+    if (LIVE) {
+      await supabase!.from('feedback').insert({
+        kind: row.kind, title: row.title, detail: row.detail, area: row.area,
+        author_id: author.id, author_name: author.name ?? null, author_role: author.role ?? null,
+      })
+      ping()
+      return
+    }
+    db.feedback.unshift(row)
+    ping()
+  },
+
+  // Managers triage: status / priority / favourite / note. Setting status to resolved stamps
+  // resolved_at / resolved_by; moving it back off resolved clears them.
+  async updateFeedback(id: string, patch: Partial<Feedback>, byUserId: string | null) {
+    const full: Partial<Feedback> = { ...patch }
+    if (patch.status !== undefined) {
+      if (patch.status === 'resolved') {
+        full.resolved_at = new Date().toISOString()
+        full.resolved_by = byUserId
+      } else {
+        full.resolved_at = null
+        full.resolved_by = null
+      }
+    }
+    const i = db.feedback.findIndex(f => f.id === id)
+    if (i >= 0) db.feedback[i] = { ...db.feedback[i], ...full }
+    if (LIVE) await supabase!.from('feedback').update(full).eq('id', id)
+    ping()
+  },
+
+  async deleteFeedback(id: string) {
+    db.feedback = db.feedback.filter(f => f.id !== id)
+    if (LIVE) await supabase!.from('feedback').delete().eq('id', id)
     ping()
   },
 
