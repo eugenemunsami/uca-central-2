@@ -136,3 +136,25 @@ Multi-sponsor beneficiary funding lines (consultant single-card view + manual li
 "Beneficiary Google Drive folder" field on the add form + always-shown Drive link in the detail panel;
 a **Return**-with-reason action added to the ManCo "Close-out requests" queue in My Work. The full
 close-out request → verify → beneficiary-level close-out pipeline is confirmed working end-to-end in live.
+
+## 12. Update round "Central Update 1" — status
+
+Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium), Batch C (big).
+
+**Decisions locked (from the user):**
+- Live updates → **Supabase Realtime** (instant push). Batch C.
+- **Central Hub** (interactive help manual + "Bugs & Lightbulbs" logging → admin list w/ delete/prioritise/favourite) → **deferred to its own dedicated pass** after the rest.
+- Admin per-user section switches → **Option A: visibility layer on top of roles** (can only hide sections a role already permits; role stays the ceiling). Batch C.
+- **Discovery links** = Google-Form links embedded in the SOW, one per intervention where applicable. The My Work acknowledge step becomes: consultant confirms whether the beneficiary filled that form (or marks Not Applicable). **SLA/RAG timers for an intervention start only AFTER its discovery-link phase clears.** Batch C.
+
+**Batch A — DONE & deployed (4 slices):**
+1. "Exco dashboard" → **Central Dashboard**; sub-title commentary stripped across internal spaces; client filter moved above the charts.
+2. Modals render via a **portal to body** (open in view — fixes the scroll-to-find-popup issue); **Onboarding search**; **Drive folder button before Confirm** on close-out verify; beneficiary cards get a pulsing **green tick when all interventions complete** + clearer "X of Y complete" progress + "No interventions assigned yet" state.
+3. Welcome parties: **MS Teams registration link** (captured on create/edit, shown on card) + **ManCo edit/delete** (migration **0009**).
+4. Close-out email logged as an **email communication** (shows in Comms Log) + **comms folded into the beneficiary Activity timeline**.
+
+**Batch B — NEXT (not started):** dashboard open-interventions-by-type chart + beneficiaries-with-no-interventions count card; Beneficiaries no-interventions view + implementation/completed/unassigned toggle; My Work completed-vs-ongoing split + fix closed/verified interventions still showing "past due"; Onboarding contemporary sectioned layout; onboarding ownership surfaced in each owner's My Work (incl. external + consultant) with notifications; onboarding escalate at any stage (direct consultant/ManCo ↔ aggregator sponsor, no ManCo approval).
+
+**Batch C — parked (big, design-first):** Realtime; the acknowledge → discovery-link gate + timer-start change; Admin section switches (Option A); Central Hub.
+
+**Open clarification still needed:** what "**program**" means as a filter dimension on the Onboarding dashboard (ED vs SD, or something else?) — only blocks that one sub-item.
