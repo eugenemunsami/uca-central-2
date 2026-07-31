@@ -49,6 +49,7 @@ export default function App() {
           {!portalHidden && <Route path="/portal" element={<Portal />} />}
           <Route path="/my-work" element={<ClientWork />} />
           <Route path="/central-hub" element={<CentralHub />} />
+          {agg && <Route path="/" element={<Dashboard />} />}
           {agg && <Route path="/beneficiaries" element={<Beneficiaries />} />}
           {agg && <Route path="/beneficiaries/:id" element={<ClientBeneficiaryDetail />} />}
           {agg && <Route path="/onboarding" element={<Onboarding />} />}

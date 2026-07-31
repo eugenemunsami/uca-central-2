@@ -8,6 +8,7 @@ import {
   AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users, Rocket, CheckCircle2, Ban, CalendarDays,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
+import { useAuth } from '../context/AuthContext'
 import { RAG_HEX } from '../lib/rag'
 import {
   FUNNEL_STAGES, STAGE_LABEL, ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL,
@@ -24,6 +25,10 @@ const tip = {
 
 export default function Dashboard() {
   const { beneficiaries, interventions, escalations, people, onboardings, welcomeParties, welcomePartyInvites, loading } = useData()
+  const { user } = useAuth()
+  // Aggregator/sponsor users see the same dashboard scoped to their programme (RLS), minus the
+  // internal-only cuts (consultant workload, the internal project-manager column).
+  const isExternal = user?.role === 'external'
   const [tab, setTab] = useState('all')
   const [rag, setRag] = useState<'all' | Rag>('all')
   const [view, setView] = useState<'delivery' | 'onboarding'>('delivery')
@@ -146,7 +151,7 @@ export default function Dashboard() {
           sub="beneficiaries awaiting scoping" delay={0.2} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className={`grid gap-4 ${isExternal ? 'lg:grid-cols-2' : 'lg:grid-cols-3'}`}>
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
           className="card p-5">
           <div className="label mb-2">Portfolio health</div>
@@ -183,20 +188,22 @@ export default function Dashboard() {
           </ResponsiveContainer>
         </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
-          className="card p-5">
-          <div className="label mb-2">Load by consultant</div>
-          <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={byConsultant} margin={{ left: -20 }}>
-              <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#ffffff66', fontSize: 11 }} />
-              <YAxis tickLine={false} axisLine={false} tick={{ fill: '#ffffff44', fontSize: 11 }} allowDecimals={false} />
-              <Tooltip {...tip} cursor={{ fill: '#ffffff08' }} />
-              <Bar dataKey="green" stackId="a" fill={RAG_HEX.green} animationDuration={900} barSize={22} />
-              <Bar dataKey="amber" stackId="a" fill={RAG_HEX.amber} animationDuration={900} barSize={22} />
-              <Bar dataKey="red" stackId="a" fill={RAG_HEX.red} radius={[4, 4, 0, 0]} animationDuration={900} barSize={22} />
-            </BarChart>
-          </ResponsiveContainer>
-        </motion.div>
+        {!isExternal && (
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+            className="card p-5">
+            <div className="label mb-2">Load by consultant</div>
+            <ResponsiveContainer width="100%" height={230}>
+              <BarChart data={byConsultant} margin={{ left: -20 }}>
+                <XAxis dataKey="name" tickLine={false} axisLine={false} tick={{ fill: '#ffffff66', fontSize: 11 }} />
+                <YAxis tickLine={false} axisLine={false} tick={{ fill: '#ffffff44', fontSize: 11 }} allowDecimals={false} />
+                <Tooltip {...tip} cursor={{ fill: '#ffffff08' }} />
+                <Bar dataKey="green" stackId="a" fill={RAG_HEX.green} animationDuration={900} barSize={22} />
+                <Bar dataKey="amber" stackId="a" fill={RAG_HEX.amber} animationDuration={900} barSize={22} />
+                <Bar dataKey="red" stackId="a" fill={RAG_HEX.red} radius={[4, 4, 0, 0]} animationDuration={900} barSize={22} />
+              </BarChart>
+            </ResponsiveContainer>
+          </motion.div>
+        )}
       </div>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.32 }}
@@ -253,7 +260,7 @@ export default function Dashboard() {
               <th className="p-4 font-medium">Beneficiary</th>
               <th className="p-4 font-medium">Sponsor / client</th>
               <th className="p-4 font-medium">Stage</th>
-              <th className="p-4 font-medium">Project manager</th>
+              {!isExternal && <th className="p-4 font-medium">Project manager</th>}
               <th className="p-4 font-medium">Last engaged</th>
               <th className="p-4 font-medium">Next action</th>
               <th className="p-4 font-medium">Status</th>
@@ -278,7 +285,7 @@ export default function Dashboard() {
                 </td>
                 <td className="p-4 text-white/50">{b.sponsor_name ?? '-'}<div className="text-[11px] text-white/30">{b.client_name}</div></td>
                 <td className="p-4 text-white/50">{STAGE_LABEL[b.stage]}</td>
-                <td className="p-4 text-white/50">{b.pm_name ?? '-'}</td>
+                {!isExternal && <td className="p-4 text-white/50">{b.pm_name ?? '-'}</td>}
                 <td className="p-4 text-white/50">{timeAgo(b.last_engagement_at)}</td>
                 <td className="p-4 max-w-[220px] truncate text-white/50">{b.next_action ?? '-'}</td>
                 <td className="p-4"><RagPill rag={b.rag} reason={b.escalation_reason} /></td>

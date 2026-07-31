@@ -28,7 +28,7 @@ export default function Layout({ children }: { children: ReactNode }) {
   const hidden = user.hidden_sections ?? []
   // Aggregator-linked externals (e.g. BEE123) additionally see Beneficiaries + Onboarding, even though
   // those nav items aren't in their role — their data is scoped to their programme by RLS + the page.
-  const aggExtra = isAggregatorUser(user) ? ['beneficiaries', 'onboarding'] : []
+  const aggExtra = isAggregatorUser(user) ? ['dashboard', 'beneficiaries', 'onboarding'] : []
   const items = nav.filter(n => {
     const roleOk = n.roles.includes(user.role) || ('key' in n && !!n.key && aggExtra.includes(n.key))
     return roleOk && !('key' in n && n.key && hidden.includes(n.key))
