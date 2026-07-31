@@ -38,10 +38,6 @@ export default function Escalations() {
     <div className="space-y-8">
       <header>
         <h1 className="text-2xl text-white">Escalations</h1>
-        <p className="mt-1 text-sm text-white/40">
-          Ownership-baton view. An escalation moves consultant → ManCo → Aggregator/Sponsor and back until
-          the consultant accepts. Only the current owner can act; everyone else sees it read-only.
-        </p>
       </header>
 
       {/* ---- Suggested (informational hint only) ---- */}

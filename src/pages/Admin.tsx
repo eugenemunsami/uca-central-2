@@ -186,9 +186,6 @@ export default function Admin() {
     <div className="space-y-6">
       <header>
         <h1 className="text-2xl text-white">Admin</h1>
-        <p className="mt-1 text-sm text-white/40">
-          The intervention catalogue, the programme structure, and who can see what.
-        </p>
       </header>
 
       <div className="flex gap-1 rounded-lg bg-ink-800 p-1">

@@ -248,9 +248,6 @@ export default function MyWork() {
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl text-white">My work</h1>
-          <p className="mt-1 text-sm text-white/40">
-            Everything you own. Post an update before Wednesday's Huddle.
-          </p>
         </div>
 
         <div className="relative">

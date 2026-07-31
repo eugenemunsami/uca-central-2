@@ -79,12 +79,7 @@ export default function Dashboard() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl text-white">Exco dashboard</h1>
-          <p className="mt-1 text-sm text-white/40">
-            {view === 'delivery'
-              ? 'Every live beneficiary, scored against the playbook clocks.'
-              : 'The onboarding pipeline at a glance — invoice request through to signed SOW.'}
-          </p>
+          <h1 className="text-2xl text-white">Central Dashboard</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex gap-1 rounded-lg bg-ink-800 p-1">
@@ -113,6 +108,21 @@ export default function Dashboard() {
       )}
 
       {view === 'delivery' && <>
+      <div className="flex flex-wrap gap-1 rounded-lg bg-ink-800 p-1">
+        <button onClick={() => setTab('all')}
+          className={`rounded-md px-4 py-2 text-sm transition-colors ${
+            tab === 'all' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+          All <span className="opacity-60">{beneficiaries.length}</span>
+        </button>
+        {clientTabs.map(t => (
+          <button key={t.name} onClick={() => setTab(t.name)}
+            className={`rounded-md px-4 py-2 text-sm transition-colors ${
+              tab === t.name ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+            {t.name} <span className="opacity-60">{t.count}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard label="Live beneficiaries" value={scoped.length} icon={<Users size={20} />}
           sub={`${interventions.filter(i => i.status !== 'completed').length} open interventions`} delay={0} />
@@ -204,21 +214,6 @@ export default function Dashboard() {
           </div>
         </motion.div>
       )}
-
-      <div className="flex flex-wrap gap-1 rounded-lg bg-ink-800 p-1">
-        <button onClick={() => setTab('all')}
-          className={`rounded-md px-4 py-2 text-sm transition-colors ${
-            tab === 'all' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
-          All <span className="opacity-60">{beneficiaries.length}</span>
-        </button>
-        {clientTabs.map(t => (
-          <button key={t.name} onClick={() => setTab(t.name)}
-            className={`rounded-md px-4 py-2 text-sm transition-colors ${
-              tab === t.name ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
-            {t.name} <span className="opacity-60">{t.count}</span>
-          </button>
-        ))}
-      </div>
 
       <div className="card overflow-hidden">
         <table className="w-full text-left text-sm">

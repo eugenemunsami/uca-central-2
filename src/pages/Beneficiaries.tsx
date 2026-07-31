@@ -195,9 +195,6 @@ export default function Beneficiaries() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl text-white">Beneficiaries</h1>
-          <p className="mt-1 text-sm text-white/40">
-            Loaded on SOW signature. One beneficiary, many concurrent interventions.
-          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <div className="relative">

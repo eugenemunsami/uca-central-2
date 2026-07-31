@@ -86,9 +86,6 @@ export default function Huddle() {
         <CalendarDays className="text-lime" size={22} />
         <div>
           <h1 className="text-2xl text-white">The Huddle</h1>
-          <p className="mt-1 text-sm text-white/40">
-            Wednesday. Every live project, led by the beneficiary who owns it.
-          </p>
         </div>
       </header>
 
