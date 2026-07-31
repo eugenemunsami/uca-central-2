@@ -1,7 +1,7 @@
 import { LIVE, supabase } from './supabase'
 import * as seed from './demo'
 import { computeRag, worst } from './rag'
-import { ONB_STATUS_OWNER, ONB_ESC_STATUSES, ONB_TERMINAL, ONB_OWNER_LABEL } from './types'
+import { ONB_STATUS_OWNER, ONB_ESC_STATUSES, ONB_TERMINAL, ONB_OWNER_LABEL, DISCOVERY_DONE } from './types'
 import type {
   Aggregator, Beneficiary, BeneficiaryEvent, BeneficiaryView, CatalogueItem, Comm, Escalation,
   EscalationEvent, EscalationView, EscStatus, EscSuggestion, Intervention, InterventionView,
@@ -493,6 +493,7 @@ export const repo = {
     db.interventions.push({
       id: uid(), kind: 'standard', status: 'not_started', closeout_status: 'none',
       assigned_at: new Date().toISOString(), acknowledged: false, acknowledged_at: null,
+      discovery_status: 'pending',
       cycle: ben?.cycle ?? 1, created_at: new Date().toISOString(), ...input,
     } as Intervention)
     const iv = db.interventions[db.interventions.length - 1]
@@ -514,6 +515,25 @@ export const repo = {
 
   async acknowledgeIntervention(id: string) {
     await repo.updateIntervention(id, { acknowledged: true, acknowledged_at: new Date().toISOString() })
+  },
+
+  // Consultant records the discovery-form check after acknowledging a new intervention.
+  // complete / na -> the phase is done and the SLA timers start; incomplete -> still waiting
+  // (consultant then logs a follow-up or escalates via the normal flow).
+  async recordDiscovery(id: string, userId: string | null, outcome: 'complete' | 'incomplete' | 'na') {
+    const status = outcome === 'complete' ? 'cleared' : outcome === 'na' ? 'na' : 'incomplete'
+    const done = DISCOVERY_DONE.includes(status)
+    const label = status === 'cleared' ? 'Discovery form confirmed complete — work started.'
+      : status === 'na' ? 'Discovery form not applicable — work started.'
+      : 'Discovery form not yet completed by the beneficiary.'
+    const info = LIVE ? await repo._ivInfo(id) : null
+    const iv = db.interventions.find(i => i.id === id)
+    await repo.updateIntervention(id, { discovery_status: status, discovery_at: done ? new Date().toISOString() : null })
+    if (LIVE) {
+      if (info) try { await supabase!.rpc('app_log_ben_event', { p_ben: info.beneficiary_id, p_user: userId, p_kind: 'note', p_text: `${info.title}: ${label}` }) } catch { /* best-effort */ }
+      ping(); return
+    }
+    if (iv) pushBenEvent(iv.beneficiary_id, userId, 'note', `${repo._ivTitle(iv)}: ${label}`)
   },
 
   // Consultant requests close-out; work is done pending ManCo review.
