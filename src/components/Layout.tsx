@@ -8,15 +8,15 @@ import { useAuth } from '../context/AuthContext'
 import { Logo } from './ui'
 
 const nav = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['exco', 'manco', 'consultant'] },
-  { to: '/beneficiaries', label: 'Beneficiaries', icon: Users, roles: ['exco', 'manco', 'consultant'] },
-  { to: '/onboarding', label: 'Onboarding', icon: Rocket, roles: ['exco', 'manco', 'consultant'] },
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard, roles: ['exco', 'manco', 'consultant'], key: 'dashboard' },
+  { to: '/beneficiaries', label: 'Beneficiaries', icon: Users, roles: ['exco', 'manco', 'consultant'], key: 'beneficiaries' },
+  { to: '/onboarding', label: 'Onboarding', icon: Rocket, roles: ['exco', 'manco', 'consultant'], key: 'onboarding' },
   { to: '/my-work', label: 'My work', icon: Briefcase, roles: ['exco', 'consultant', 'manco'] },
   { to: '/my-work', label: 'My work', icon: Briefcase, roles: ['external'] },
-  { to: '/huddle', label: 'The Huddle', icon: CalendarDays, roles: ['exco', 'manco', 'consultant'] },
-  { to: '/escalations', label: 'Escalations', icon: AlertTriangle, roles: ['exco', 'manco', 'consultant'] },
+  { to: '/huddle', label: 'The Huddle', icon: CalendarDays, roles: ['exco', 'manco', 'consultant'], key: 'huddle' },
+  { to: '/escalations', label: 'Escalations', icon: AlertTriangle, roles: ['exco', 'manco', 'consultant'], key: 'escalations' },
   { to: '/portal', label: 'Portal', icon: Building2, roles: ['external'] },
-  { to: '/admin', label: 'Admin', icon: Settings, roles: ['exco', 'manco'] },
+  { to: '/admin', label: 'Admin', icon: Settings, roles: ['exco', 'manco'], key: 'admin' },
 ]
 
 export default function Layout({ children }: { children: ReactNode }) {
@@ -24,7 +24,8 @@ export default function Layout({ children }: { children: ReactNode }) {
   const navigate = useNavigate()
   if (!user) return null
 
-  const items = nav.filter(n => n.roles.includes(user.role))
+  const hidden = user.hidden_sections ?? []
+  const items = nav.filter(n => n.roles.includes(user.role) && !('key' in n && n.key && hidden.includes(n.key)))
 
   return (
     <div className="flex min-h-screen bg-ink-900">
