@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Download, Plus, Search, Trash2, Upload, RefreshCw } from 'lucide-react'
+import { Download, Plus, Search, Trash2, Upload, RefreshCw, CheckCircle2 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
@@ -247,19 +247,35 @@ export default function Beneficiaries() {
                     ))}
                   </div>
                 </div>
-                <RagPill rag={c.rag} reason={c.reason} />
+                <div className="flex items-center gap-2">
+                  {c.intervention_count > 0 && c.completed_count === c.intervention_count && (
+                    <span title="All interventions complete"
+                      className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-jade/20 text-jade animate-pulse">
+                      <CheckCircle2 size={16} />
+                    </span>
+                  )}
+                  <RagPill rag={c.rag} reason={c.reason} />
+                </div>
               </div>
 
-              <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
-                <motion.div className="h-full rounded-full bg-jade"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${c.intervention_count ? (c.completed_count / c.intervention_count) * 100 : 0}%` }}
-                  transition={{ duration: 0.8, delay: 0.2 }} />
-              </div>
-              <div className="mt-2 flex justify-between text-[11px] text-white/35">
-                <span>{c.stageLabel}</span>
-                <span>{c.completed_count}/{c.intervention_count} complete</span>
-              </div>
+              {c.intervention_count === 0 ? (
+                <div className="mt-4 rounded-lg bg-ink-800/60 px-3 py-2 text-center text-[11px] text-white/40">
+                  No interventions assigned yet
+                </div>
+              ) : (
+                <>
+                  <div className="mt-4 flex items-center justify-between text-[11px]">
+                    <span className="text-white/50">Interventions</span>
+                    <span className="text-white/70">{c.completed_count} of {c.intervention_count} complete</span>
+                  </div>
+                  <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-ink-600">
+                    <motion.div className="h-full rounded-full bg-jade"
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(c.completed_count / c.intervention_count) * 100}%` }}
+                      transition={{ duration: 0.8, delay: 0.2 }} />
+                  </div>
+                </>
+              )}
 
               <div className="mt-4 flex justify-between border-t border-ink-600 pt-3 text-[11px] text-white/40">
                 <span>PM · {c.pm_name ?? 'unassigned'}</span>

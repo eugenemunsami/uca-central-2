@@ -663,6 +663,11 @@ function CloseoutPanel({ iv, userId, canManage, canRequest, people }: {
           </span>
           {canManage && (
             <span className="flex gap-2">
+              {iv.closeout_subfolder_url && (
+                <a className="btn-ghost" href={iv.closeout_subfolder_url} target="_blank" rel="noreferrer">
+                  <FolderOpen size={15} /> Drive folder
+                </a>
+              )}
               <button className="btn-primary" onClick={() => repo.confirmCloseout(iv.id, userId)}>
                 <ShieldCheck size={15} /> Verify &amp; confirm
               </button>
