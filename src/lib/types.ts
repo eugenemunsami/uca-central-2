@@ -164,8 +164,16 @@ export interface Intervention {
   closeout_report_url?: string | null
   rag_override?: Rag | null
   rag_override_reason?: string | null
+  // Discovery-form gate: the beneficiary fills a Google Form (linked in the SOW) per intervention.
+  // Timers only start once this is cleared. pending=default, cleared=filled, incomplete=not filled, na=none.
+  discovery_status?: DiscoveryStatus
+  discovery_link?: string | null
+  discovery_at?: string | null
   created_at: string
 }
+
+export type DiscoveryStatus = 'pending' | 'cleared' | 'incomplete' | 'na'
+export const DISCOVERY_DONE: DiscoveryStatus[] = ['cleared', 'na']
 
 export interface WeeklyUpdate {
   id: string
