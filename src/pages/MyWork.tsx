@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell, Clock, CheckCircle2, Sparkles, Eye,
-  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send,
+  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
@@ -694,6 +694,12 @@ function CloseoutRequestRow({ i, userId, who }: { i: InterventionView; userId: s
           <div className="mt-0.5 text-[11px] text-white/40">Requested by {who}</div>
         </div>
         <div className="flex gap-2">
+          {i.closeout_subfolder_url && (
+            <a href={i.closeout_subfolder_url} target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-ink-500 px-3 py-1.5 text-xs text-white/70 hover:text-white">
+              <FolderOpen size={13} /> Drive folder
+            </a>
+          )}
           <button
             onClick={() => repo.confirmCloseout(i.id, userId)}
             className="rounded-lg bg-lime px-3 py-1.5 text-xs font-medium text-ink-900 hover:opacity-90"
