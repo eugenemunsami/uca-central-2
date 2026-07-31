@@ -82,6 +82,7 @@ export default function Beneficiaries() {
   const [q, setQ] = useState('')
   const [sponsorFilter, setSponsorFilter] = useState('all')
   const [view, setView] = useState<'active' | 'archived'>('active')
+  const [stateFilter, setStateFilter] = useState<'all' | 'delivery' | 'completed' | 'unassigned'>('all')
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState<'single' | 'bulk'>('single')
 
@@ -123,7 +124,12 @@ export default function Beneficiaries() {
       : can('manage')
         ? b.lifecycle !== 'archived'
         : (b.lifecycle !== 'archived' && b.lifecycle !== 'concluded')  // consultants don't see concluded
-    return matchesQ && matchesSponsor && matchesView
+    const matchesState =
+      stateFilter === 'all' ? true
+      : stateFilter === 'unassigned' ? b.intervention_count === 0
+      : stateFilter === 'completed' ? (b.intervention_count > 0 && b.completed_count === b.intervention_count)
+      : /* delivery */ (b.intervention_count > 0 && b.completed_count < b.intervention_count)
+    return matchesQ && matchesSponsor && matchesView && matchesState
   })
 
   // Managers/Exco see each funding line as its own card; consultants see one card per beneficiary
@@ -206,6 +212,15 @@ export default function Beneficiaries() {
             <option value="all">All sponsors / aggregators</option>
             {clientNames.map(name => <option key={name} value={name}>{name}</option>)}
           </select>
+          <div className="flex rounded-lg bg-ink-800 p-1">
+            {([['all', 'All'], ['delivery', 'In delivery'], ['completed', 'Completed'], ['unassigned', 'Unassigned']] as const).map(([v, lbl]) => (
+              <button key={v} onClick={() => setStateFilter(v)}
+                className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
+                  stateFilter === v ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
           {can('manage') && (
             <div className="flex rounded-lg bg-ink-800 p-1">
               {(['active', 'archived'] as const).map(v => (
