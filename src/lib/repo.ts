@@ -1508,6 +1508,11 @@ export const repo = {
         const recips = participants.filter(u => u && u !== actorId)
         if (recips.length) try { await supabase!.rpc('app_notify', { recipient_ids: recips, p_kind: 'onboarding', p_text: notice, p_action_owner: notifyTarget }) } catch { /* best-effort */ }
       }
+      // Escalated to the Aggregator/Sponsor: notify the sponsor account(s) too (action-required), since
+      // they have no specific user id in `participants` — they own it as an organisation.
+      if (toStatus === 'esc_sponsor') {
+        try { await supabase!.rpc('app_notify_onb_sponsor', { p_onboarding: o.id, p_text: notice ?? `${merged.name}: an onboarding matter has been escalated to you.` }) } catch { /* best-effort */ }
+      }
       ping(); return
     }
     const i = db.onboardings.findIndex(x => x.id === o.id)
@@ -1515,6 +1520,18 @@ export const repo = {
     db.onboardingEvents.unshift({ id: uid(), onboarding_id: o.id, at: now, user_id: actorId, kind, from_status: fromStatus, to_status: toStatus, from_owner_id: fromOwner, to_owner_id: ownerId, text: text ?? null })
     if (notice) participants.filter(u => u && u !== actorId).forEach(u =>
       db.notifications.unshift({ id: uid(), user_id: u, at: now, kind: 'onboarding', text: notice, escalation_id: null, action_required: u === notifyTarget, read: false }))
+    if (toStatus === 'esc_sponsor') {
+      const spon = db.sponsors.find(s => s.id === merged.sponsor_id)
+      db.profiles
+        .filter(p => p.role === 'external' && p.id !== actorId && (
+          p.external_sponsor_id === merged.sponsor_id ||
+          (!!spon?.aggregator_id && p.external_client_id === spon.aggregator_id)))
+        .forEach(p => db.notifications.unshift({
+          id: uid(), user_id: p.id, at: now, kind: 'onboarding',
+          text: notice ?? `${merged.name}: escalated to the Aggregator/Sponsor.`,
+          escalation_id: null, action_required: true, read: false,
+        }))
+    }
     ping()
   },
 

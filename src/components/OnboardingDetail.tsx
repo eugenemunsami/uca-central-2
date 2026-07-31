@@ -77,6 +77,9 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
     : ownerRole === 'external' ? (internal || (externalMine && EXTERNAL_ACT.includes(o.status)))
     : internal)
   const locked = !canAct && !isTerminal
+  // Internal staff (exco / manco / consultant) can escalate straight to the Aggregator/Sponsor from any
+  // active stage and can add notes; external (sponsor) users cannot escalate to themselves.
+  const staff = user?.role !== 'external'
 
   const reset = () => { setForm(null); setA(''); setB(''); setNum(''); setTarget(''); setFlag(false) }
 
@@ -204,10 +207,10 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
           {o.status === 'esc_sponsor' && (
             <button className="btn-primary" onClick={() => setForm('resolve_esc')}><CornerUpLeft size={15} /> Resolve escalation → return</button>
           )}
-          {internal && !ONB_ESC_STATUSES.includes(o.status) && (
-            <button className="btn-ghost" onClick={() => setForm('raise_sponsor')}><ArrowUp size={15} /> Escalate to Sponsor</button>
+          {staff && !ONB_ESC_STATUSES.includes(o.status) && (
+            <button className="btn-ghost" onClick={() => setForm('raise_sponsor')}><ArrowUp size={15} /> Escalate to Aggregator/Sponsor</button>
           )}
-          {internal && (
+          {staff && (
             <button className="btn-ghost" onClick={() => setForm('note')}><MessageSquarePlus size={15} /> Add note</button>
           )}
         </div>
