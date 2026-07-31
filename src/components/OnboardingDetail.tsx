@@ -66,7 +66,16 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
   const ownerRole = ONB_STATUS_OWNER[o.status]
   const isTerminal = ONB_TERMINAL.includes(o.status)
   const internal = user?.role === 'manco' || user?.role === 'exco'
-  const canAct = !isTerminal && (ownerRole === 'consultant' ? user?.id === o.consultant_id : internal)
+  // An aggregator/sponsor user attached to THIS ticket's programme can act at the stages the model
+  // already hands to the sponsor (red no-show — remove / request a visit, and a sponsor escalation).
+  const externalMine = user?.role === 'external' && !!(
+    (user.external_sponsor_id && user.external_sponsor_id === o.sponsor_id) ||
+    (user.external_client_id && user.external_client_id === o.client_id))
+  const EXTERNAL_ACT: OnbStatus[] = ['red_no_show', 'esc_sponsor']
+  const canAct = !isTerminal && (
+    ownerRole === 'consultant' ? user?.id === o.consultant_id
+    : ownerRole === 'external' ? (internal || (externalMine && EXTERNAL_ACT.includes(o.status)))
+    : internal)
   const locked = !canAct && !isTerminal
 
   const reset = () => { setForm(null); setA(''); setB(''); setNum(''); setTarget(''); setFlag(false) }
@@ -195,10 +204,12 @@ export default function OnboardingDetail({ id, onClose }: { id: string; onClose?
           {o.status === 'esc_sponsor' && (
             <button className="btn-primary" onClick={() => setForm('resolve_esc')}><CornerUpLeft size={15} /> Resolve escalation → return</button>
           )}
-          {!ONB_ESC_STATUSES.includes(o.status) && (
+          {internal && !ONB_ESC_STATUSES.includes(o.status) && (
             <button className="btn-ghost" onClick={() => setForm('raise_sponsor')}><ArrowUp size={15} /> Escalate to Sponsor</button>
           )}
-          <button className="btn-ghost" onClick={() => setForm('note')}><MessageSquarePlus size={15} /> Add note</button>
+          {internal && (
+            <button className="btn-ghost" onClick={() => setForm('note')}><MessageSquarePlus size={15} /> Add note</button>
+          )}
         </div>
       )}
       {locked && (

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
+import { isAggregatorUser } from '../lib/types'
 import { Logo } from './ui'
 
 const nav = [
@@ -25,7 +26,13 @@ export default function Layout({ children }: { children: ReactNode }) {
   if (!user) return null
 
   const hidden = user.hidden_sections ?? []
-  const items = nav.filter(n => n.roles.includes(user.role) && !('key' in n && n.key && hidden.includes(n.key)))
+  // Aggregator-linked externals (e.g. BEE123) additionally see Beneficiaries + Onboarding, even though
+  // those nav items aren't in their role — their data is scoped to their programme by RLS + the page.
+  const aggExtra = isAggregatorUser(user) ? ['beneficiaries', 'onboarding'] : []
+  const items = nav.filter(n => {
+    const roleOk = n.roles.includes(user.role) || ('key' in n && !!n.key && aggExtra.includes(n.key))
+    return roleOk && !('key' in n && n.key && hidden.includes(n.key))
+  })
 
   return (
     <div className="flex min-h-screen bg-ink-900">

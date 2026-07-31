@@ -1,12 +1,13 @@
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
-import { TOGGLEABLE_SECTIONS } from './lib/types'
+import { TOGGLEABLE_SECTIONS, isAggregatorUser } from './lib/types'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import SetPassword from './pages/SetPassword'
 import Dashboard from './pages/Dashboard'
 import Beneficiaries from './pages/Beneficiaries'
 import BeneficiaryDetail from './pages/BeneficiaryDetail'
+import ClientBeneficiaryDetail from './pages/ClientBeneficiaryDetail'
 import Onboarding from './pages/Onboarding'
 import MyWork from './pages/MyWork'
 import Huddle from './pages/Huddle'
@@ -39,12 +40,18 @@ export default function App() {
   if (user.role === 'external') {
     const portalHidden = (user.hidden_sections ?? []).includes('portal')
     const home = portalHidden ? '/my-work' : '/portal'
+    // Aggregator-linked externals (e.g. BEE123) also get the Onboarding pipeline and a scoped
+    // Beneficiaries section (their own aggregator + its sponsors; a client-safe beneficiary detail).
+    const agg = isAggregatorUser(user)
     return (
       <Layout>
         <Routes>
           {!portalHidden && <Route path="/portal" element={<Portal />} />}
           <Route path="/my-work" element={<ClientWork />} />
           <Route path="/central-hub" element={<CentralHub />} />
+          {agg && <Route path="/beneficiaries" element={<Beneficiaries />} />}
+          {agg && <Route path="/beneficiaries/:id" element={<ClientBeneficiaryDetail />} />}
+          {agg && <Route path="/onboarding" element={<Onboarding />} />}
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </Layout>

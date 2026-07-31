@@ -48,6 +48,13 @@ export interface Profile {
   hidden_sections?: string[]               // section keys an admin has turned OFF for this user (Option A)
 }
 
+// External users linked at the aggregator level (e.g. BEE123, via external_client_id) get an expanded
+// workspace: the Onboarding section and a scoped Beneficiaries section covering their aggregator and
+// its sponsors. Sponsor-only external users keep the Portal-only experience.
+export const isAggregatorUser = (
+  u: { role: Role; external_client_id?: string | null } | null | undefined,
+): boolean => !!u && u.role === 'external' && !!u.external_client_id
+
 // Sections an admin can toggle per user (visibility layer on top of roles). My Work / Portal are the
 // user's own workspace and are always visible, so they aren't listed here.
 export const TOGGLEABLE_SECTIONS: { key: string; label: string; path: string; roles: Role[] }[] = [
