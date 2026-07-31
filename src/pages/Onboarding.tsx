@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Plus, CalendarDays, Rocket, CheckCircle2, Ban } from 'lucide-react'
+import { Plus, CalendarDays, Rocket, CheckCircle2, Ban, Search } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
@@ -16,14 +16,21 @@ export default function Onboarding() {
   const [viewId, setViewId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [partyOpen, setPartyOpen] = useState(false)
+  const [q, setQ] = useState('')
 
   const internal = user?.role === 'manco' || user?.role === 'exco'
 
   if (loading) return <div className="text-white/40">Loading…</div>
 
-  const active = onboardings.filter(o => o.status !== 'converted' && o.status !== 'withdrawn')
-  const converted = onboardings.filter(o => o.status === 'converted')
-  const withdrawn = onboardings.filter(o => o.status === 'withdrawn')
+  const matchQ = (o: typeof onboardings[number]) => {
+    const s = q.trim().toLowerCase()
+    if (!s) return true
+    return [o.name, o.client_name, o.sponsor_name, o.invoice_number]
+      .some(v => (v ?? '').toLowerCase().includes(s))
+  }
+  const active = onboardings.filter(o => o.status !== 'converted' && o.status !== 'withdrawn' && matchQ(o))
+  const converted = onboardings.filter(o => o.status === 'converted' && matchQ(o))
+  const withdrawn = onboardings.filter(o => o.status === 'withdrawn' && matchQ(o))
   const sortByAction = (rows: typeof active) => [...rows].sort((x, y) => y.last_action_at.localeCompare(x.last_action_at))
 
   return (
@@ -37,9 +44,16 @@ export default function Onboarding() {
             enters Central proper.
           </p>
         </div>
-        {internal && (
-          <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> New onboarding</button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
+            <input className="input w-64 pl-9" placeholder="Search name, sponsor or invoice"
+              value={q} onChange={e => setQ(e.target.value)} />
+          </div>
+          {internal && (
+            <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> New onboarding</button>
+          )}
+        </div>
       </header>
 
       {/* welcome parties */}

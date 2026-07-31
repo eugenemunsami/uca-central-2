@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -78,7 +79,10 @@ export function StatCard({
 export function Modal({ open, onClose, title, children, wide }: {
   open: boolean; onClose: () => void; title: string; children: ReactNode; wide?: boolean
 }) {
-  return (
+  // Rendered through a portal to <body> so the fixed overlay is positioned against the viewport.
+  // (A `position: fixed` element inside a framer-motion transformed ancestor would otherwise be
+  // trapped inside that ancestor, appearing down the page instead of centred on screen.)
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -104,7 +108,8 @@ export function Modal({ open, onClose, title, children, wide }: {
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 
