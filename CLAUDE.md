@@ -175,6 +175,10 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Migrations now through 0019.**
 
+## 14. Monitech ESD load (backend bulk load into LIVE tables)
+
+Monitech (standalone sponsor **"Monitech Mining"**, id `30eeb0a4-c3a9-4acb-9c02-7277083390f7`) FY26 ESD programme loaded from `Monitech_Project_Tracker.xlsx` via `supabase/load_monitech.sql` (one-off DML, run through execute_sql, committed for the record). Decisions: only the 6 active beneficiaries; **split by stage** — the 3 ED (diagnostics complete) went in as **live Beneficiaries** at stage `sow`, RAG override `red` ("Agreement not signed"), each with 2 custom interventions (Business coaching & mentorship = R19,500, not_started, consultant **Rinaldo**; Ember360 diagnostic = completed, consultant **Keanan**); the 3 SD (diagnostics in progress) went in as **Onboarding tickets** at `ember_loading` (consultant Keanan, manco Rinaldo, exco Jameel). The outsourced coach **Rajesh Sukha** isn't a Central user, so he's named in each coaching intervention's weekly-update history + `custom_motivation`. Prospects/withdrawn (MON-007..010) not loaded. **Rollback:** commented delete block at the foot of `load_monitech.sql` (delete by sponsor — these are currently the only Monitech rows). NB: a separate, unrelated "Dynamic Gee" already exists under another sponsor — Monitech's is its own ED engagement.
+
 ## 13. 2025 Archive (TEMPORARY — removable, fully isolated)
 
 BEE123 asked for line of sight into the 2025 (FY25) projects. Built as a standalone section that **shares
