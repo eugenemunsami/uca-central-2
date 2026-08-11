@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   BookOpen, Bug, Lightbulb, Search, ChevronDown, Trash2, LifeBuoy, Send, CheckCircle2,
   Compass, LayoutDashboard, Users, Rocket, Briefcase, AlertTriangle, Settings, Building2,
-  ClipboardCheck, KeyRound, ListChecks,
+  ClipboardCheck, KeyRound, ListChecks, ScrollText,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { repo, subscribe } from '../lib/repo'
@@ -339,9 +339,22 @@ function BugsAndIdeas({ mine, onChanged }: { mine: Feedback[]; onChanged: () => 
   )
 }
 
+function OperatingManual() {
+  return (
+    <div className="overflow-hidden rounded-xl border border-white/10 bg-ink-900">
+      <iframe
+        src="/uca-operating-manual.html"
+        title="UCA Operating Manual"
+        className="block w-full"
+        style={{ height: 'calc(100vh - 220px)', minHeight: 560, border: 0 }}
+      />
+    </div>
+  )
+}
+
 export default function CentralHub() {
   const { user } = useAuth()
-  const [tab, setTab] = useState<'help' | 'feedback'>('help')
+  const [tab, setTab] = useState<'help' | 'manual' | 'feedback'>('help')
   const [all, setAll] = useState<Feedback[]>([])
 
   const load = () => repo.feedback().then(setAll).catch(() => setAll([]))
@@ -370,6 +383,11 @@ export default function CentralHub() {
             tab === 'help' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
           <BookOpen size={15} /> UCA Central Help
         </button>
+        <button onClick={() => setTab('manual')}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-colors ${
+            tab === 'manual' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+          <ScrollText size={15} /> UCA Operating Manual
+        </button>
         <button onClick={() => setTab('feedback')}
           className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm transition-colors ${
             tab === 'feedback' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
@@ -377,7 +395,7 @@ export default function CentralHub() {
         </button>
       </div>
 
-      {tab === 'help' ? <HelpManual role={user.role} /> : <BugsAndIdeas mine={mine} onChanged={load} />}
+      {tab === 'help' ? <HelpManual role={user.role} /> : tab === 'manual' ? <OperatingManual /> : <BugsAndIdeas mine={mine} onChanged={load} />}
     </div>
   )
 }

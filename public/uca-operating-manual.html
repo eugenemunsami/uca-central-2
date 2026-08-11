@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UCA Operating Manual — How We Work</title>
+<style>
+  :root{
+    --bg:#0E0E0E; --panel:#161616; --raised:#1E1E1E; --line:#2A2A2A;
+    --lime:#9FD150; --flame:#EE4823; --jade:#35C08A; --amber:#F5B942;
+    --ink:#ECECEA; --mute:#9A9A96; --mute2:#6E6E6A;
+    --limebg:rgba(159,209,80,.10); --redbg:rgba(238,72,35,.10); --amberbg:rgba(245,185,66,.10); --jadebg:rgba(53,192,138,.10);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;line-height:1.6;font-size:15.5px;-webkit-font-smoothing:antialiased}
+  a{color:var(--lime);text-decoration:none}
+  .wrap{display:grid;grid-template-columns:280px 1fr;max-width:1240px;margin:0 auto;gap:0}
+  /* sidebar */
+  aside{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--line);padding:26px 20px 60px;background:linear-gradient(180deg,#101010,#0c0c0c)}
+  .brand{font-size:11px;letter-spacing:2.5px;color:var(--lime);font-weight:700}
+  .brandt{font-family:Cambria,Georgia,serif;font-size:23px;font-weight:700;margin:4px 0 2px}
+  .brands{color:var(--mute);font-size:12.5px;margin-bottom:16px}
+  #q{width:100%;background:var(--raised);border:1px solid var(--line);color:var(--ink);border-radius:8px;padding:8px 11px;font-size:13.5px;margin-bottom:14px;outline:none}
+  #q:focus{border-color:var(--lime)}
+  nav a{display:block;color:var(--mute);font-size:13px;padding:5px 9px;border-radius:6px;border-left:2px solid transparent}
+  nav a:hover{color:var(--ink);background:var(--raised)}
+  nav a.on{color:var(--lime);border-left-color:var(--lime);background:var(--limebg)}
+  nav .sm{font-size:12px;padding-left:20px;color:var(--mute2)}
+  /* main */
+  main{padding:40px 52px 120px;min-width:0}
+  .hero{border-bottom:1px solid var(--line);padding-bottom:26px;margin-bottom:10px}
+  .hero .k{font-size:11px;letter-spacing:3px;color:var(--lime);font-weight:700}
+  .hero h1{font-family:Cambria,Georgia,serif;font-size:48px;line-height:1.05;margin:8px 0 6px;font-weight:700}
+  .hero .sub{color:var(--mute);font-size:18px}
+  .hero .meta{color:var(--mute2);font-size:13px;margin-top:14px}
+  section{padding:26px 0;border-bottom:1px solid var(--line);scroll-margin-top:14px}
+  h2.sec{font-family:Cambria,Georgia,serif;font-size:26px;font-weight:700;margin:0 0 4px}
+  h2.sec .n{color:var(--lime);margin-right:10px}
+  h3{color:var(--lime);font-size:15.5px;letter-spacing:.3px;margin:22px 0 8px;text-transform:none}
+  p{margin:0 0 12px;color:var(--ink)}
+  p.lead{color:var(--mute);font-size:16px}
+  ul,ol{margin:0 0 12px;padding-left:22px}
+  li{margin:0 0 7px}
+  li::marker{color:var(--lime)}
+  b,strong{color:#fff;font-weight:600}
+  .muted{color:var(--mute)}
+  /* tables */
+  table{width:100%;border-collapse:collapse;margin:10px 0 16px;font-size:13.8px}
+  th,td{text-align:left;padding:9px 12px;border:1px solid var(--line);vertical-align:top}
+  th{background:var(--raised);color:#fff;font-weight:600;font-size:12.5px;letter-spacing:.4px}
+  td:first-child{color:#fff}
+  tbody tr:nth-child(even){background:rgba(255,255,255,.015)}
+  .tag{display:inline-block;font-weight:700;font-size:12px;padding:1px 8px;border-radius:20px}
+  .t-red{color:var(--flame);background:var(--redbg)} .t-amber{color:var(--amber);background:var(--amberbg)} .t-green{color:var(--jade);background:var(--jadebg)}
+  /* callouts */
+  .call{border-radius:10px;padding:14px 16px;margin:14px 0;border:1px solid var(--line);border-left-width:4px}
+  .call .ct{font-weight:700;font-size:13.5px;margin-bottom:5px;letter-spacing:.3px}
+  .call p{margin:0 0 6px;font-size:14px;color:var(--ink)}
+  .call p:last-child{margin:0}
+  .do{background:var(--jadebg);border-left-color:var(--jade)} .do .ct{color:var(--jade)}
+  .warn{background:var(--redbg);border-left-color:var(--flame)} .warn .ct{color:var(--flame)}
+  .note{background:var(--amberbg);border-left-color:var(--amber)} .note .ct{color:var(--amber)}
+  /* do-dont grid */
+  .dd{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .dd .col{border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .dd .do-col{border-top:3px solid var(--jade)} .dd .dont-col{border-top:3px solid var(--flame)}
+  .dd h4{margin:0 0 8px;font-size:15px} .dd .do-col h4{color:var(--jade)} .dd .dont-col h4{color:var(--flame)}
+  .dd li::marker{color:var(--mute2)}
+  /* commitments cards */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+  .cardx{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .cardx .no{font-family:Cambria,serif;font-size:22px;color:var(--lime);font-weight:700}
+  .cardx b{display:block;margin:2px 0 3px}
+  .cardx span{color:var(--mute);font-size:13.5px}
+  .sign{display:flex;gap:40px;margin-top:18px;flex-wrap:wrap}
+  .sign .l{flex:1;min-width:220px;border-bottom:1px solid var(--mute2);padding-bottom:2px;color:var(--mute2);font-size:13px;margin-top:26px}
+  .foot{color:var(--mute2);font-size:12.5px;margin-top:40px;text-align:center}
+  @media (max-width:880px){ .wrap{grid-template-columns:1fr} aside{display:none} main{padding:26px 20px 80px} .dd,.cards{grid-template-columns:1fr} .hero h1{font-size:36px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside>
+    <div class="brand">THE UNCONVENTIONAL CA</div>
+    <div class="brandt">How We Work</div>
+    <div class="brands">The UCA Operating Manual</div>
+    <input id="q" type="text" placeholder="Search the manual…" oninput="filt(this.value)">
+    <nav id="nav">
+      <a href="#s1">1 · Purpose</a>
+      <a href="#s2">2 · Five commitments</a>
+      <a href="#s3">3 · Roles & the baton</a>
+      <a href="#s4">4 · The lifecycle</a>
+      <a href="#s5">5 · Cadence at a glance</a>
+      <a href="#s6">6 · The SLA standard</a>
+      <a href="#s7">7 · Daily — My Work</a>
+      <a href="#s8">8 · Weekly — updates & RAG</a>
+      <a href="#s9">9 · The discovery gate</a>
+      <a href="#s10">10 · The close-out chain</a>
+      <a href="#s11">11 · Escalations</a>
+      <a href="#s12">12 · Role playbooks</a>
+      <a href="#s13">13 · Central quick reference</a>
+      <a href="#s14">14 · Do's & don'ts</a>
+      <a href="#s15">15 · Glossary</a>
+      <a href="#s16">16 · Accountability & review</a>
+    </nav>
+  </aside>
+
+  <main>
+    <div class="hero">
+      <div class="k">THE UNCONVENTIONAL CA</div>
+      <h1>How We Work</h1>
+      <div class="sub">Our delivery workflow, the cadences that keep it on track, and how we run it in Central.</div>
+    </div>
+
+    <section id="s1">
+      <h2 class="sec"><span class="n">1</span>Purpose & how to use this document</h2>
+      <p class="lead">The single, plain-language guide to how we deliver at UCA — and how that work lives in Central, our programme-management app.</p>
+      <p>It exists so everyone, in every role, shares the same picture of what good looks like: what happens at each stage, who owns it, by when, and exactly what to do in Central. It is both a reference and a standard. Treat its cadences and time limits as the way we work, not suggestions.</p>
+      <h3>How to read it</h3>
+      <ul>
+        <li><b>Start with your role.</b> Section 12 has a short playbook for Consultants, ManCo and ExCo. Read yours closely; skim the others so you know how the baton passes.</li>
+        <li><b>Live by the two tables.</b> The Cadence at a glance (§5) and the SLA standard (§6) are the heart of this document.</li>
+        <li><b>When in doubt, act in Central.</b> Every instruction here ends in a concrete Central action.</li>
+      </ul>
+      <div class="call note"><div class="ct">The golden rule</div><p>Central is the single source of truth. Funders, sponsors and aggregators increasingly look at it directly. The note you write today is the audit trail tomorrow — so keep it honest, current and shared. If it isn't in Central, it didn't happen.</p></div>
+    </section>
+
+    <section id="s2">
+      <h2 class="sec"><span class="n">2</span>Our five commitments</h2>
+      <p class="lead">Everything in this manual comes back to five simple commitments.</p>
+      <div class="cards">
+        <div class="cardx"><div class="no">1</div><b>One record.</b><span>Central is where the truth lives — not a spreadsheet, an inbox or a WhatsApp. Update Central first.</span></div>
+        <div class="cardx"><div class="no">2</div><b>One owner.</b><span>At every step, exactly one person owns the next action, and Central shows who. Work never sits with 'nobody'.</span></div>
+        <div class="cardx"><div class="no">3</div><b>Honest, current, shared.</b><span>Status reflects reality even when it's red. A stale record is worse than a red one.</span></div>
+        <div class="cardx"><div class="no">4</div><b>Move on time.</b><span>We work to cadences and time limits, not to whenever we get to it. On-time beats perfect-but-late.</span></div>
+        <div class="cardx" style="grid-column:1/-1"><div class="no">5</div><b>Escalate early.</b><span>Asking for help is the system working. A red sitting silent for a week is the only real failure.</span></div>
+      </div>
+    </section>
+
+    <section id="s3">
+      <h2 class="sec"><span class="n">3</span>Roles & the ownership baton</h2>
+      <p>At any moment one role holds the baton — they own the next action. Passing it is a deliberate, logged act in Central that notifies the next owner. If you've handed it on, you don't chase by email; you trust the system and check Central.</p>
+      <table>
+        <thead><tr><th>Role</th><th>Owns</th><th>Holds the baton when…</th></tr></thead>
+        <tbody>
+          <tr><td>Consultant</td><td>Delivery. Runs Ember360 onboarding, clears discovery, delivers interventions, logs weekly updates, requests close-out, raises escalations.</td><td>Work is in delivery — the default holder for most active work.</td></tr>
+          <tr><td>ManCo</td><td>Verification & unblocking. Assigns work, verifies or returns close-outs, owns escalations handed up, runs the weekly review.</td><td>A close-out is awaiting verification, or an escalation has been handed up.</td></tr>
+          <tr><td>ExCo</td><td>Oversight & sign-off. Signs off the highest-risk items and major-programme close-outs.</td><td>An item needs executive sign-off or a decision above ManCo's authority.</td></tr>
+          <tr><td>Sponsor / Aggregator</td><td>External partners (e.g. BEE123, a standalone sponsor). Own steps handed out to them.</td><td>An onboarding or escalation has been handed out to them to act.</td></tr>
+        </tbody>
+      </table>
+      <div class="call do"><div class="ct">Rule of thumb</div><p>If you are the owner, the ball is in your court — do the next action or hand it on with a note. If you've handed it on, Central has already told the next owner.</p></div>
+    </section>
+
+    <section id="s4">
+      <h2 class="sec"><span class="n">4</span>The programme lifecycle</h2>
+      <p>A business moves left to right through six stages. It advances only when the current stage's gate is genuinely met; it can pause (on hold) or escalate at any point.</p>
+      <table>
+        <thead><tr><th>Stage</th><th>What happens</th><th>Primary owner</th><th>In Central</th></tr></thead>
+        <tbody>
+          <tr><td>1 · Onboarding</td><td>Business enters the pipeline; Ember360 diagnostic loaded and completed.</td><td>Consultant</td><td>Onboarding ticket</td></tr>
+          <tr><td>2 · Diagnostic</td><td>Discovery form + baseline; needs confirmed.</td><td>Consultant</td><td>Beneficiary / intervention</td></tr>
+          <tr><td>3 · SoW</td><td>Scope of work agreed; interventions defined.</td><td>ManCo / Consultant</td><td>Beneficiary (SoW)</td></tr>
+          <tr><td>4 · Implementation</td><td>Interventions delivered; weekly updates logged.</td><td>Consultant</td><td>Interventions + updates</td></tr>
+          <tr><td>5 · Monitoring</td><td>Post-delivery tracking; impact confirmed.</td><td>Consultant / ManCo</td><td>Beneficiary (monitoring)</td></tr>
+          <tr><td>6 · Completed</td><td>Close-out verified by ManCo; business exits.</td><td>ManCo / ExCo</td><td>Close-out → concluded</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">Implementation is where consultants spend most of their time, and where most of the cadences in this manual apply.</p>
+    </section>
+
+    <section id="s5">
+      <h2 class="sec"><span class="n">5</span>The cadence at a glance</h2>
+      <p class="lead">The rhythm of the job. Do these, on these timings, and you are current by definition. Business days throughout.</p>
+      <h3>Every day</h3>
+      <table><thead><tr><th>Do this</th><th>Why</th><th>Where in Central</th></tr></thead><tbody>
+        <tr><td>Open My Work first</td><td>It's everything waiting on you, in priority order</td><td>My Work</td></tr>
+        <tr><td>Acknowledge new assignments</td><td>Accepts the baton so work is truly yours</td><td>My Work → Acknowledge</td></tr>
+        <tr><td>Clear discovery checks that are ready</td><td>Starts the intervention and its timers</td><td>My Work → Discovery check</td></tr>
+        <tr><td>Action every red item (update or escalate)</td><td>Red means overdue or blocked — deal with it</td><td>Beneficiaries / Escalations</td></tr>
+        <tr><td>Log what you did while it's fresh</td><td>Accurate record, no Friday reconstruction</td><td>Intervention → weekly update</td></tr>
+      </tbody></table>
+      <h3>Every week</h3>
+      <table><thead><tr><th>Do this</th><th>Why</th><th>Where in Central</th></tr></thead><tbody>
+        <tr><td>Post an update on every live intervention</td><td>Prevents the ~10-day staleness red; keeps funders informed</td><td>Intervention → weekly update</td></tr>
+        <tr><td>Request close-out on anything finished</td><td>Starts the verification chain</td><td>Intervention → request close-out</td></tr>
+        <tr><td>Scan your Dashboard</td><td>Sanity-check your RAG spread tells the truth</td><td>Dashboard</td></tr>
+        <tr><td>Aim to clear My Work to empty</td><td>If it's empty, you're current</td><td>My Work</td></tr>
+      </tbody></table>
+      <h3>On event (as it happens)</h3>
+      <table><thead><tr><th>When this happens</th><th>Do this</th><th>Where in Central</th></tr></thead><tbody>
+        <tr><td>A business is assigned to you</td><td>Acknowledge within SLA</td><td>My Work</td></tr>
+        <tr><td>You finish a piece of work</td><td>Mark done + request close-out</td><td>Intervention</td></tr>
+        <tr><td>You're genuinely blocked</td><td>Escalate the same day</td><td>Intervention / Onboarding → Escalate</td></tr>
+        <tr><td>A beneficiary won't respond</td><td>Log the attempt; escalate or hand back</td><td>Onboarding / Beneficiary</td></tr>
+      </tbody></table>
+    </section>
+
+    <section id="s6">
+      <h2 class="sec"><span class="n">6</span>The SLA standard</h2>
+      <p>Our time limits — generous enough to be realistic, firm enough to keep the pipeline moving. All timings in business days. The <b>Consequence</b> column is what happens automatically or by process when a limit is missed.</p>
+      <table><thead><tr><th>Action</th><th>Owner</th><th>Time limit</th><th>Consequence if missed</th></tr></thead><tbody>
+        <tr><td>Acknowledge a new assignment</td><td>Consultant</td><td>2 days</td><td>Surfaces on ManCo's dashboard as unacknowledged; ManCo follows up.</td></tr>
+        <tr><td>Clear the discovery check (or mark N/A / incomplete)</td><td>Consultant</td><td>5 days of acknowledging</td><td>Intervention can't start; flagged as stuck in discovery at the weekly review.</td></tr>
+        <tr><td>Send the Ember360 invite (onboarding)</td><td>Consultant</td><td>2 days of the ticket landing</td><td>Onboarding stalls; visible on the Onboarding board.</td></tr>
+        <tr><td>Weekly update on every live intervention</td><td>Consultant</td><td>Every 7 days</td><td>Central turns it red at ~10 days automatically; shows on your and ManCo's dashboards; raised at the weekly review.</td></tr>
+        <tr><td>Action a red item (update or escalate)</td><td>Consultant</td><td>2 days of it turning red</td><td>Escalation ladder; logged; repeated misses raised with ExCo.</td></tr>
+        <tr><td>Request close-out after work finishes</td><td>Consultant</td><td>5 days of finishing</td><td>Work looks unfinished; delays billing/reporting; flagged at review.</td></tr>
+        <tr><td>Verify or return a close-out</td><td>ManCo</td><td>3 days of the request</td><td>Consultant blocked on sign-off; ExCo notified on overdue major close-outs.</td></tr>
+        <tr><td>Re-submit a returned close-out</td><td>Consultant</td><td>3 days of return</td><td>Returns to the red queue; counts as a missed cadence.</td></tr>
+        <tr><td>Act on an escalation you own</td><td>ManCo / Sponsor</td><td>2 days</td><td>Auto-reminder; re-escalates up the ladder; ExCo visibility.</td></tr>
+        <tr><td>Executive sign-off on highest-risk items</td><td>ExCo</td><td>3 days</td><td>Item held; flagged in the leadership review.</td></tr>
+      </tbody></table>
+      <div class="call warn"><div class="ct">How the teeth work</div><p>Nothing here relies on someone chasing you. Central makes misses self-evident: overdue items go red, unacknowledged work surfaces, stale updates show on every dashboard.</p><p>ManCo runs a weekly accountability review off these signals. Persistent or repeated misses are logged and raised with ExCo. The point is not blame — it's that the whole team can see the true state at all times, and nothing quietly slips.</p></div>
+    </section>
+
+    <section id="s7">
+      <h2 class="sec"><span class="n">7</span>Daily rhythm — My Work</h2>
+      <p>My Work is your home base and the first thing you open each day. It collects everything Central is waiting on you for, in the order you should act. Clear it top to bottom and you've done your Central day.</p>
+      <h3>The four kinds of item</h3>
+      <ul>
+        <li><b>Acknowledge</b> — new assignments. Acknowledge to accept the baton (SLA: 2 days). Until you do, it isn't truly yours.</li>
+        <li><b>Discovery checks</b> — interventions waiting on you to confirm discovery and go live (SLA: 5 days).</li>
+        <li><b>Updates due</b> — live interventions that need this week's update before they drift red.</li>
+        <li><b>Close-outs</b> — finished work waiting for you to request sign-off, or items ManCo has returned to you.</li>
+      </ul>
+      <h3>Your daily loop</h3>
+      <ol>
+        <li>Open My Work first thing.</li>
+        <li>Acknowledge anything new.</li>
+        <li>Clear discovery checks that are ready to start.</li>
+        <li>Action every red item — post an honest update, or escalate if you're blocked.</li>
+        <li>Log what you did today while it's fresh.</li>
+      </ol>
+      <div class="call do"><div class="ct">Treat My Work like an inbox</div><p>Clear it, don't just look at it. If My Work is empty at the end of the day, you are current — the single best signal that you're on top of your book.</p></div>
+    </section>
+
+    <section id="s8">
+      <h2 class="sec"><span class="n">8</span>Weekly rhythm — updates drive RAG</h2>
+      <p>The one habit that keeps Central trustworthy is the weekly update. Every live intervention gets at least one update every 7 days. Miss it and Central drifts the intervention to red on its own at about 10 days — and red rolls up to the whole business and onto every dashboard.</p>
+      <h3>What a good update contains</h3>
+      <ul>
+        <li><b>Completed work</b> — what actually moved since last week.</li>
+        <li><b>In progress</b> — what's underway, and any blocker.</li>
+        <li><b>Written for an outsider</b> — a sponsor should understand it. Specific and dated beats long and vague.</li>
+      </ul>
+      <p><span class="tag t-green">Good</span> &nbsp;"Held session 3 of 6 with X; drafting the marketing brief; awaiting logo assets from the client." &nbsp;&nbsp; <span class="tag t-red">Weak</span> &nbsp;"ongoing."</p>
+      <h3>How RAG is decided</h3>
+      <ul>
+        <li><span class="tag t-green">Green</span> — on track, updated recently.</li>
+        <li><span class="tag t-amber">Amber</span> — needs attention or a decision soon.</li>
+        <li><span class="tag t-red">Red</span> — overdue, stalled or flagged. A live intervention with no update for ~10 days goes red by itself.</li>
+      </ul>
+      <p>You can override RAG with a written reason when the automatic read is genuinely unfair — but the cure for most reds is simply posting an honest update.</p>
+    </section>
+
+    <section id="s9">
+      <h2 class="sec"><span class="n">9</span>The discovery gate</h2>
+      <p>An intervention doesn't count as 'live' until its discovery form is cleared. Delivery timers — and the staleness rule that turns things red — only start after discovery passes. This stops you being penalised for delay on work that hasn't truly begun.</p>
+      <ol>
+        <li><b>Created</b> — the intervention exists but discovery is pending. No clock yet.</li>
+        <li><b>Discovery check</b> — you confirm scope, baseline and that the beneficiary is genuinely ready.</li>
+        <li><b>Cleared</b> — discovery passes; the intervention goes live and timers begin.</li>
+        <li><b>Delivery</b> — weekly updates now expected; staleness counts against it.</li>
+      </ol>
+      <div class="call note"><div class="ct">Use the gate honestly</div><p>Don't clear discovery until the work is genuinely ready to start — you're starting your own clock. Equally, don't park work in discovery forever to dodge the clock; ManCo can see that too. Discovery is a real gate, not a parking bay.</p></div>
+    </section>
+
+    <section id="s10">
+      <h2 class="sec"><span class="n">10</span>The close-out chain</h2>
+      <p>Close-out is where quality is enforced, with a deliberate second pair of eyes. You cannot close your own work — you request it, and ManCo verifies.</p>
+      <ol>
+        <li><b>You deliver</b> — the work is genuinely complete and updates are current.</li>
+        <li><b>You request close-out</b> — mark it done and request sign-off (SLA: within 5 days of finishing). The baton passes to ManCo.</li>
+        <li><b>ManCo verifies</b> — checks the evidence and the record (SLA: within 3 days).</li>
+        <li><b>Confirmed or returned</b> — confirmed → it closes. Returned → it comes back to you with a reason to fix (re-submit within 3 days).</li>
+      </ol>
+      <p>When all of a beneficiary's interventions are confirmed, the business moves toward close-out, ManCo produces the close-out report, the client acknowledges, and it is concluded and archived.</p>
+      <div class="call do"><div class="ct">Make ManCo's job trivial</div><p>A fast confirm comes from a clean record: updates current, evidence attached, status honest. Sloppy records are the main reason close-outs bounce.</p></div>
+    </section>
+
+    <section id="s11">
+      <h2 class="sec"><span class="n">11</span>Escalations</h2>
+      <p>Escalating is not admitting defeat — it's routing a problem to the person who can actually solve it. The thing we stamp out is a red sitting silent while someone privately hopes it resolves.</p>
+      <div class="dd">
+        <div class="col do-col"><h4>When to escalate</h4><ul>
+          <li>A beneficiary won't respond and you've exhausted the normal chase.</li>
+          <li>You need a sponsor or aggregator to intervene or make a call.</li>
+          <li>Something is blocked above your authority to resolve.</li>
+          <li>A red you can't clear on your own.</li>
+        </ul></div>
+        <div class="col do-col" style="border-top-color:var(--lime)"><h4 style="color:var(--lime)">What escalating does</h4><ul>
+          <li>Transfers ownership to the right party — ManCo, sponsor or aggregator.</li>
+          <li>Notifies them automatically; they see it in their queue.</li>
+          <li>Logs the reason and starts a visible, dated trail.</li>
+          <li>Returns to you once they've acted, with their note.</li>
+        </ul></div>
+      </div>
+      <div class="call warn"><div class="ct">Escalation SLA</div><p>Raise it the same day you determine you're blocked — don't wait for the next update. Whoever owns an open escalation acts within 2 business days; if not, it re-escalates up the ladder and becomes visible to ExCo.</p></div>
+    </section>
+
+    <section id="s12">
+      <h2 class="sec"><span class="n">12</span>Role playbooks</h2>
+      <h3>Consultant</h3>
+      <p>You are the default holder of the baton for active work. Deliver, keep the record honest, and pass the baton cleanly when you need help.</p>
+      <ul>
+        <li><b>Daily:</b> open My Work; acknowledge new assignments (2 days); clear discovery checks (5 days); action reds; log as you go.</li>
+        <li><b>Weekly:</b> update every live intervention (7 days); request close-out on finished work (5 days); glance at your Dashboard; clear My Work.</li>
+        <li><b>Onboarding:</b> send the Ember360 invite (2 days), chase weekly, and report-and-hand-back or escalate if it stalls (10 days) — always with a note.</li>
+        <li><b>When blocked:</b> escalate the same day. Never sit on a red.</li>
+      </ul>
+      <h3>Management Committee (ManCo)</h3>
+      <p>You keep the pipeline honest and unblocked, and you are the quality gate at close-out.</p>
+      <ul>
+        <li><b>Assign & acknowledge:</b> assign work clearly; make sure new assignments are acknowledged and nothing sits unowned.</li>
+        <li><b>Verify close-outs:</b> verify or return within 3 days, with a clear reason on any return.</li>
+        <li><b>Own escalations handed up:</b> act within 2 days; hand out to a sponsor/aggregator where that's the right owner.</li>
+        <li><b>Run the weekly accountability review:</b> work the dashboard — stale updates, overdue acknowledgements, reds, overdue close-outs. Follow up misses; escalate persistent ones to ExCo.</li>
+        <li><b>Produce close-out reports</b> and move concluded businesses to archive.</li>
+      </ul>
+      <h3>Executive Committee (ExCo)</h3>
+      <p>You provide oversight and the final word on the highest-risk items.</p>
+      <ul>
+        <li><b>Sign off</b> the highest-risk items and major-programme close-outs within 3 days.</li>
+        <li><b>Take the decisions</b> that sit above ManCo's authority when an escalation reaches you.</li>
+        <li><b>Watch the leadership view:</b> programme-level RAG, open escalations, repeated cadence misses raised by ManCo.</li>
+      </ul>
+      <h3>Sponsor / Aggregator (external partners)</h3>
+      <p>External partners see only their own slice of Central. They own the steps we deliberately hand out to them.</p>
+      <ul>
+        <li><b>Act on handed-out onboarding</b> (chase a beneficiary, request a site visit, resolve a sponsor escalation) within the escalation SLA.</li>
+        <li><b>Use their scoped views</b> (Dashboard, Beneficiaries, Onboarding) to stay current on their programme.</li>
+      </ul>
+    </section>
+
+    <section id="s13">
+      <h2 class="sec"><span class="n">13</span>Central quick reference</h2>
+      <p>Where each thing lives. When you're unsure, this is the map.</p>
+      <table><thead><tr><th>Section</th><th>Answers the question</th><th>Key actions</th></tr></thead><tbody>
+        <tr><td>My Work</td><td>What needs me right now?</td><td>Acknowledge, discovery check, post updates, request close-out</td></tr>
+        <tr><td>Onboarding</td><td>Who's trying to get in?</td><td>Load Ember360, report & hand back, escalate</td></tr>
+        <tr><td>Beneficiaries</td><td>My book of businesses</td><td>Open a card, read funding lines & interventions, update, override RAG with reason</td></tr>
+        <tr><td>Escalations</td><td>What's been handed up or out?</td><td>Raise, own, resolve; read the dated trail</td></tr>
+        <tr><td>Dashboard</td><td>How healthy is my portfolio?</td><td>Scan RAG spread, load, overdue items</td></tr>
+        <tr><td>Central Hub</td><td>How do I do X? How do I report a problem?</td><td>Search the manual; log a Bug or a Lightbulb</td></tr>
+      </tbody></table>
+      <div class="call note"><div class="ct">Central Hub — help & feedback</div><p>Search the Hub before asking — the interactive manual covers every section and stays current. Log a <b>Bug</b> when something's broken (say what you did, what you expected, what happened) or a <b>Lightbulb</b> for any idea to make Central better. Both go straight to the admin review list — you're shaping the tool you use.</p></div>
+    </section>
+
+    <section id="s14">
+      <h2 class="sec"><span class="n">14</span>Do's and don'ts</h2>
+      <div class="dd">
+        <div class="col do-col"><h4>Do</h4><ul>
+          <li>Update in Central first — before WhatsApp or email.</li>
+          <li>Write notes a sponsor could read and understand.</li>
+          <li>Escalate early when you're genuinely blocked.</li>
+          <li>Keep status honest, even when it's red.</li>
+          <li>Acknowledge and action within the SLAs.</li>
+          <li>Log bugs and ideas as you hit them.</li>
+        </ul></div>
+        <div class="col dont-col"><h4>Don't</h4><ul>
+          <li>Let a live intervention go a week with no update.</li>
+          <li>Clear discovery on work that isn't really ready.</li>
+          <li>Sit on a red hoping it fixes itself.</li>
+          <li>Close your own work in your head — request it, let ManCo confirm.</li>
+          <li>Keep the real status in a private spreadsheet.</li>
+          <li>Assume someone else will chase the miss — they can all see it.</li>
+        </ul></div>
+      </div>
+    </section>
+
+    <section id="s15">
+      <h2 class="sec"><span class="n">15</span>Glossary</h2>
+      <table><thead><tr><th>Term</th><th>Plain meaning</th></tr></thead><tbody>
+        <tr><td>Ownership baton</td><td>The single owner of the next action at any moment. Passing it is a logged, notifying act.</td></tr>
+        <tr><td>Funding line</td><td>One invoice/sponsor stream behind a business. A business can have several; consultants see one collapsed card.</td></tr>
+        <tr><td>Intervention</td><td>A single deliverable piece of support (a diagnostic, a coaching block, a website, a capex item). The unit of work.</td></tr>
+        <tr><td>Discovery gate</td><td>The check that must clear before an intervention goes live; timers start only after it passes.</td></tr>
+        <tr><td>RAG</td><td>Red / Amber / Green health. Red rolls up from an intervention to the whole business and every dashboard.</td></tr>
+        <tr><td>Weekly update</td><td>The at-least-weekly note on a live intervention (completed work + in progress). Missing it drives red.</td></tr>
+        <tr><td>Close-out</td><td>The verified finish of an intervention: consultant requests → ManCo confirms or returns.</td></tr>
+        <tr><td>Escalation</td><td>Handing a blocked item to the right owner (ManCo / sponsor / aggregator), with a dated trail.</td></tr>
+        <tr><td>SLA</td><td>The time limit on an action, in business days, with a consequence when missed (§6).</td></tr>
+      </tbody></table>
+    </section>
+
+    <section id="s16">
+      <h2 class="sec"><span class="n">16</span>Accountability & review</h2>
+      <p>Accountability here is designed to be visible, not punitive. Because Central is the record, the true state is always on show — which means good work is visible too.</p>
+      <ul>
+        <li><b>Weekly ManCo review:</b> ManCo works the dashboard each week against the SLA standard — stale updates, unacknowledged work, reds, overdue close-outs — and follows up directly.</li>
+        <li><b>Escalation ladder:</b> a missed action on a red or an owned escalation re-escalates automatically and becomes visible up the chain.</li>
+        <li><b>Leadership view:</b> ExCo sees programme-level RAG and repeated cadence misses, and steps in on the highest-risk items.</li>
+        <li><b>The measure of a good week:</b> My Work cleared, every live intervention updated, no silent reds, close-outs requested on time.</li>
+      </ul>
+    </section>
+
+    <div class="foot">The Unconventional CA · How We Work · Confidential</div>
+  </main>
+</div>
+
+<script>
+  // scroll-spy
+  const links=[...document.querySelectorAll('#nav a')];
+  const secs=links.map(a=>document.querySelector(a.getAttribute('href')));
+  const spy=()=>{ let i=secs.length-1; for(let k=0;k<secs.length;k++){ if(secs[k].getBoundingClientRect().top<120) i=k; }
+    links.forEach(l=>l.classList.remove('on')); if(links[i]) links[i].classList.add('on'); };
+  document.addEventListener('scroll',spy,{passive:true}); spy();
+  // simple search: hide sections that don't contain the query
+  function filt(v){ v=v.trim().toLowerCase();
+    secs.forEach((s,i)=>{ const hit = !v || s.textContent.toLowerCase().includes(v);
+      s.style.display = hit?'':'none'; links[i].style.opacity = hit?'1':'.35'; }); }
+</script>
+</body>
+</html>
