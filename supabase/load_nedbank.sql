@@ -256,7 +256,7 @@ ivb as (
   select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','Beneficiary has re-engaged after the earlier status conflict. No sessions delivered yet; delivery to be scheduled.',null,'Schedule Session 1 and confirm coach capacity','Rinaldo Josie','2026-08-05' from ivb returning 1),
 e as (
   insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
-  select ivb.id,b.id,'Status Conflict','Nedbank-confirmed non-engagement conflicts with a recorded active coaching session. Unresolved.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1 ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-08-05','2026-08-05' from ivb,b returning id)
+  select ivb.id,b.id,'Status Conflict','Nedbank-confirmed non-engagement conflicts with a recorded active coaching session. Unresolved.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-08-05','2026-08-05' from ivb,b returning id)
 insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
   select id,'2026-08-05','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Status Conflict: Nedbank-confirmed non-engagement conflicts with a recorded active coaching session. Unresolved.' from e;
 
