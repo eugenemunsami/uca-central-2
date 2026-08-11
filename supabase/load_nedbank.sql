@@ -137,4 +137,135 @@ e as (
   insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
   select ivb.id,b.id,'Funding Distress / Debt Arrears','Westbank loan 5+ months in arrears on R120,000 with truck security exposure; settlement discount offered but unanswered. Cash R3,000 at programme close. Tax clearance and PAYE unresolved, blocking three funding routes.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-07-29','2026-07-29' from ivb,b returning id)
 insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
-  select id,'2026-07-29','69effdfb-6c59-4138-94a4-ea037030a1 ec' from e;
+  select id,'2026-07-29','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Funding Distress / Debt Arrears: Westbank loan 5+ months in arrears on R120,000 with truck security exposure; settlement discount offered but unanswered. Cash R3,000 at programme close. Tax clearance and PAYE unresolved, blocking three funding routes.' from e;
+
+-- NED-009  Trash Converters  [Tranche 1 Complete -> monitoring, green, 6/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Trash Converters','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Waste Management','[]'::jsonb,'monitoring','active','8957f6bb-9b23-4412-9c14-d25d3e2088de','Budget, cash flow forecast, bank reconciliation','green'::rag,'Budget & cash flow forecast not delivered; bank reconciliation outstanding',1,'2026-07-27','2026-08-05') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 29 (ELIGIBLE). Weakest at baseline: Operational Capacity and Scalability (3). Province: Limpopo. Compliance: All current: CIPC, SARS, UIF, BEE Level 1, insurance, COID.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-08-05','na','2026-08-05',true,now(),'2026-08-05',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Mark Frankel. 6 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 6 of 6 on file. Bankability 6/10.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-07-27',null,'na','2026-08-05',true,now(),'2026-08-05',null,null,1 from b returning id)
+insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','BS2 close-out. R150,000 funding secured (Standard Bank Basali R100k, Limpopo Kasi Summit R50k). COID compliance cleared. Concor rate renegotiation closed with vendor number secured.',null,'Reconcile coach-reported June revenue (~R1,484,000) against FY2026 AFS and bank statements','Rinaldo Josie','2026-07-27' from ivb;
+
+-- NED-010  Makhabisi Recycling and Trading CC  [In Delivery -> implementation, red, 4/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Makhabisi Recycling and Trading CC','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Waste & Recycling','[]'::jsonb,'implementation','active','8957f6bb-9b23-4412-9c14-d25d3e2088de','Rates clearance blocked by R1m+ municipal debt; 4 Malawian work permits unverified','red'::rag,'Governance HIGH: property transfer stalled, liquidated before clearance by the Master of the High Court, title uncertain. Compliance HIGH: municipal rates debt over R1m blocks rates clearance; 4 Malawian work permits unverified. Seller''s attorney unresponsive since 15 May.',1,'2026-07-30','2026-08-05') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 19 (NOT ELIGIBLE / PRE-WORK). Weakest at baseline: Business Track Record (2). Compliance: COIDA, UIF and tax clearance current; DFFE permit site visit scheduled.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-08-05','na','2026-08-05',true,now(),'2026-08-05',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Matthew Emmanuel. 4 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 4 of 6 on file. Bankability 4/10. R150,000 from Polyco for electricity reinstatement - funds still held by the contractor. Bidvest in-kind: solar, truck (ESD), PPE, strapping machines, bale bags. HR contracts and policies signed by all 40 staff. Staff sleeping at the factory to protect stock - safety risk.','8957f6bb-9b23-4412-9c14-d25d3e2088de','in_progress',null,null,'na','2026-08-05',true,now(),'2026-08-05','red'::rag,'Governance HIGH: property transfer stalled, liquidated before clearance by the Master of the High Court, title uncertain. Compliance HIGH: municipal rates debt over R1m blocks rates clearance; 4 Malawian work permits unverified. Seller''s attorney unresponsive since 15 May.',1 from b returning id)
+, wu as (
+  insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','Session 4. R150,000 secured from Polyco for electricity reinstatement (funds held by contractor); Bidvest in-kind support delivered. New employment contracts and HR policies signed by all 40 staff. Bankability 3 to 4.',null,'ESCALATE: property transfer stalled and municipal rates debt over R1m; verify 4 Malawian work permits','Rinaldo Josie','2026-07-30' from ivb returning 1),
+e as (
+  insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
+  select ivb.id,b.id,'Governance / Compliance','Property transfer stalled: council will not issue a rates clearance certificate and the property was liquidated before clearance by the Master of the High Court, leaving title uncertain. Municipal rates debt over R1m (only R13,175 written off). Seller''s attorney unresponsive since 15 May. Four Malawian work permits unverified.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-07-30','2026-07-30' from ivb,b returning id)
+insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
+  select id,'2026-07-30','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Governance / Compliance: Property transfer stalled: council will not issue a rates clearance certificate and the property was liquidated before clearance by the Master of the High Court, leaving title uncertain. Municipal rates debt over R1m (only R13,175 written off). Seller''s attorney unresponsive since 15 May. Four Malawian work permits unverified.' from e;
+
+-- NED-011  Our Poultry Place  [Tranche 1 Complete -> monitoring, green, 6/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Our Poultry Place','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Agriculture - Poultry','[]'::jsonb,'monitoring','active','8957f6bb-9b23-4412-9c14-d25d3e2088de','Insurance unresolved after 6 sessions; COIDA registration unverified','green'::rag,'Insurance unresolved after 6 sessions; COIDA unverified; cash flow forecast contains acknowledged errors',1,'2026-07-22','2026-04-08') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 25.2 (ELIGIBLE). Weakest at baseline: Impact & Social Value (2.8). Compliance: CIPC and tax current.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-04-08','na','2026-04-08',true,now(),'2026-04-08',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Mark Frankel. 6 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 6 of 6 on file. Bankability 5/10.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-07-22',null,'na','2026-04-08',true,now(),'2026-04-08',null,null,1 from b returning id)
+insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','BS2 close-out. 2 jobs created effective 20 July (branch administrator, flexi-timer); headcount 30 to 32. Cash recovered to ~R320,000 from R78,000.',null,'Insurance and COIDA registration remain unresolved after six sessions','Incoming coach','2026-07-22' from ivb;
+
+-- NED-012  Wasteq  [In Delivery -> implementation, amber, 0/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Wasteq','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Waste Management','[]'::jsonb,'implementation','active','8957f6bb-9b23-4412-9c14-d25d3e2088de','Session delivery not yet evidenced','amber'::rag,'No sessions evidenced. Assessed ELIGIBLE at DD (83%, 15 Apr 2026) - one of the two highest scores in the cohort - but no coaching delivery on record.',1,'2026-04-15','2026-04-15') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 29.2 (ELIGIBLE). Weakest at baseline: Operational Capacity and Scalability (3.7). Compliance: Assessed at DD.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-04-15','na','2026-04-15',true,now(),'2026-04-15',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Matthew Emmanuel. 0 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 0 of 6 on file. DD filed under the entity name Rokiwaste (Pty) Ltd; Wasteq is the cohort/trading name. In-person meeting being scheduled.','8957f6bb-9b23-4412-9c14-d25d3e2088de','not_started',null,null,'na','2026-04-15',true,now(),'2026-04-15','amber'::rag,'No sessions evidenced. Assessed ELIGIBLE at DD (83%, 15 Apr 2026) - one of the two highest scores in the cohort - but no coaching delivery on record.',1 from b returning id)
+, wu as (
+  insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de',null,'DD filed under the entity name Rokiwaste (Pty) Ltd; Wasteq is the cohort/trading name. In-person meeting being scheduled.','Schedule first coaching session and confirm coach capacity',null,'2026-08-05' from ivb returning 1),
+e as (
+  insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
+  select ivb.id,b.id,'Non-Delivery','Assessed ELIGIBLE at DD (83%, 15 Apr 2026), one of the two highest scores in the cohort, but no coaching delivery on record. DD filed under the entity name Rokiwaste (Pty) Ltd; Wasteq is the cohort/trading name. In-person meeting being scheduled.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-08-05','2026-08-05' from ivb,b returning id)
+insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
+  select id,'2026-08-05','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Non-Delivery: Assessed ELIGIBLE at DD (83%, 15 Apr 2026), one of the two highest scores in the cohort, but no coaching delivery on record. DD filed under the entity name Rokiwaste (Pty) Ltd; Wasteq is the cohort/trading name. In-person meeting being scheduled.' from e;
+
+-- NED-013  Benica Projects  [Escalated -> implementation, red, 0/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Benica Projects','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Projects','[]'::jsonb,'implementation','active','8957f6bb-9b23-4412-9c14-d25d3e2088de',null,'red'::rag,'NO SESSIONS DELIVERED. Documented pattern of re-engagement followed by unresponsiveness. Approaching final contact attempt, then formal notice.',1,'2026-08-05','2026-04-13') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 27.6 (ELIGIBLE). Weakest at baseline: Market Demand and Revenue Sustainability (3.5).','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-04-13','na','2026-04-13',true,now(),'2026-04-13',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Matthew Emmanuel. 0 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 0 of 6 on file. Non-engagement, not a booklet lag. Nil delivery against a 6-session allocation.','8957f6bb-9b23-4412-9c14-d25d3e2088de','awaiting_beneficiary',null,'2026-08-05','na','2026-04-13',true,now(),'2026-04-13','red'::rag,'NO SESSIONS DELIVERED. Documented pattern of re-engagement followed by unresponsiveness. Approaching final contact attempt, then formal notice.',1 from b returning id)
+, wu as (
+  insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','No sessions delivered. Non-engagement confirmed - this is nil delivery against a 6-session allocation, not a booklet lag.',null,'Final contact attempt, then formal notice','Rinaldo Josie','2026-08-05' from ivb returning 1),
+e as (
+  insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
+  select ivb.id,b.id,'Non-Engagement','Documented pattern of re-engagement followed by unresponsiveness. Approaching final contact attempt, then formal notice.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-08-05','2026-08-05' from ivb,b returning id)
+insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
+  select id,'2026-08-05','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Non-Engagement: Documented pattern of re-engagement followed by unresponsiveness. Approaching final contact attempt, then formal notice.' from e;
+
+-- NED-014  Tshegofentse Facilities and Engineering CC  [In Delivery -> implementation, amber, 3/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Tshegofentse Facilities and Engineering CC','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Facilities & Hazardous Waste','[]'::jsonb,'implementation','active','8957f6bb-9b23-4412-9c14-d25d3e2088de','S1, S5 and S6 booklets not evidenced','amber'::rag,'S1, S5 and S6 not evidenced in the booklet. Revenue static at R280k-R300k. No response from Roky Waste on equipment; Nedbank VAF introduction outstanding.',1,'2026-07-30','2026-05-15') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 25 (NOT ELIGIBLE / PRE-WORK). Weakest at baseline: Financial Discipline & Profitability (3). Compliance: Compliant.','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-05-15','na','2026-05-15',true,now(),'2026-05-15',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Matthew Emmanuel. 3 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 3 of 6 on file. Bankability 5/10. NRF three-year contract R400,000 secured; clients 4 to 5. German trade mission October (visa collected, DTIC prep scheduled). Booklet states cumulative jobs 8 - only the 2 intern placements are evidenced; the earlier 6 cannot be traced. Cumulative funding shown as R1.2m but R0 accessed during the programme.','8957f6bb-9b23-4412-9c14-d25d3e2088de','in_progress',null,null,'na','2026-05-15',true,now(),'2026-05-15','amber'::rag,'S1, S5 and S6 not evidenced in the booklet. Revenue static at R280k-R300k. No response from Roky Waste on equipment; Nedbank VAF introduction outstanding.',1 from b returning id)
+, wu as (
+  insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','Session 4. Three-year NRF contract worth R400,000 secured; clients 4 to 5. Two 12-month intern placements confirmed. German trade mission visa collected for October. Bankability 4 to 5.',null,'Confirm whether S1, S5 and S6 were delivered; query the cumulative jobs figure of 8 and the R1.2m cumulative funding','Rinaldo Josie','2026-07-30' from ivb returning 1),
+e as (
+  insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
+  select ivb.id,b.id,'Non-Responsiveness','No response from Roky Waste on equipment requirements; Nedbank VAF introduction still outstanding. Flagged with escalation marked Yes at Session 4.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-07-30','2026-07-30' from ivb,b returning id)
+insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
+  select id,'2026-07-30','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Non-Responsiveness: No response from Roky Waste on equipment requirements; Nedbank VAF introduction still outstanding. Flagged with escalation marked Yes at Session 4.' from e;
+
+-- NED-015  Mohau Innovate  [Onboarding -> implementation, amber, 0/6]
+with b as (
+  insert into beneficiaries (name,sponsor_id,industry,directors,stage,lifecycle,project_manager_id,outstanding_items,rag_override,rag_override_reason,cycle,last_engagement_at,created_at) values (
+    'Mohau Innovate','28d8ffac-d2fb-4ddb-acd7-86c580c23091','Technology / Innovation','[]'::jsonb,'implementation','active','8957f6bb-9b23-4412-9c14-d25d3e2088de',null,'amber'::rag,'No sessions delivered yet. Beneficiary has re-engaged; sessions to be scheduled.',1,'2026-08-05','2026-04-23') returning id),
+iva as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,cycle)
+  select b.id,'custom','Ember360 diagnostic & Due Diligence assessment','other','Category: Diagnostics & Due Diligence. Baseline DD readiness 25.9 (ELIGIBLE). Weakest at baseline: Market Demand and Revenue Sustainability (2.8).','8957f6bb-9b23-4412-9c14-d25d3e2088de','completed','2026-04-23','na','2026-04-23',true,now(),'2026-04-23',1 from b),
+ivb as (
+  insert into interventions (beneficiary_id,kind,custom_name,custom_kind,custom_motivation,consultant_id,status,completed_at,awaiting_response_since,discovery_status,discovery_at,acknowledged,acknowledged_at,assigned_at,rag_override,rag_override_reason,cycle)
+  select b.id,'custom','Investment-readiness coaching — 6 sessions (F1-F4, BS1, BS2)','other','Category: Coaching & Mentorship. Coach: Matthew Emmanuel. 0 of 6 sessions delivered (F1-F4, BS1, BS2); booklets 0 of 6 on file. Earlier conflict between Nedbank-confirmed non-engagement and a recorded active session now resolved - beneficiary is back, delivery pending.','8957f6bb-9b23-4412-9c14-d25d3e2088de','not_started',null,null,'na','2026-04-23',true,now(),'2026-04-23','amber'::rag,'No sessions delivered yet. Beneficiary has re-engaged; sessions to be scheduled.',1 from b returning id)
+, wu as (
+  insert into weekly_updates (intervention_id,author_id,completed_work,in_progress,next_action,blocker_owner,created_at)
+  select id,'8957f6bb-9b23-4412-9c14-d25d3e2088de','Beneficiary has re-engaged after the earlier status conflict. No sessions delivered yet; delivery to be scheduled.',null,'Schedule Session 1 and confirm coach capacity','Rinaldo Josie','2026-08-05' from ivb returning 1),
+e as (
+  insert into escalations (intervention_id,beneficiary_id,reason,context,status,current_owner_id,current_owner_role,consultant_id,manco_id,sponsor_id,participants,raised_by,raised_at,last_action_at)
+  select ivb.id,b.id,'Status Conflict','Nedbank-confirmed non-engagement conflicts with a recorded active coaching session. Unresolved.','with_sponsor',null,'external','8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1ec',null,array['8957f6bb-9b23-4412-9c14-d25d3e2088de','69effdfb-6c59-4138-94a4-ea037030a1 ec']::uuid[],'69effdfb-6c59-4138-94a4-ea037030a1ec','2026-08-05','2026-08-05' from ivb,b returning id)
+insert into escalation_events (escalation_id,at,user_id,kind,to_status,text)
+  select id,'2026-08-05','69effdfb-6c59-4138-94a4-ea037030a1ec','raised','with_sponsor','Status Conflict: Nedbank-confirmed non-engagement conflicts with a recorded active coaching session. Unresolved.' from e;
+
+select (select count(*) from beneficiaries where sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091') bens,(select count(*) from interventions i join beneficiaries b on b.id=i.beneficiary_id where b.sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091') ivs,(select count(*) from escalations e join beneficiaries b on b.id=e.beneficiary_id where b.sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091') escs,(select count(*) from weekly_updates wu join interventions i on i.id=wu.intervention_id join beneficiaries b on b.id=i.beneficiary_id where b.sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091') wus;
+commit;
+
+-- ROLLBACK (Nedbank SIU only):
+-- delete from escalation_events where escalation_id in (select e.id from escalations e join beneficiaries b on b.id=e.beneficiary_id where b.sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091');
+-- delete from escalations where beneficiary_id in (select id from beneficiaries where sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091');
+-- delete from weekly_updates where intervention_id in (select i.id from interventions i join beneficiaries b on b.id=i.beneficiary_id where b.sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091');
+-- delete from interventions where beneficiary_id in (select id from beneficiaries where sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091');
+-- delete from beneficiaries where sponsor_id='28d8ffac-d2fb-4ddb-acd7-86c580c23091';
