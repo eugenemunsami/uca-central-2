@@ -88,7 +88,8 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 `0016` external aggregator access (scoped onboarding read + sponsor-act; onboarding/party RLS relaxed to my_sponsors) ·
 `0017` intervention_catalogue readable by external (so v_intervention_rag can label titles/categories in the client view) ·
 `0018` app_notify_onb_sponsor (notify the Aggregator/Sponsor account(s) when an onboarding ticket is escalated to them) ·
-`0019` archive_2025_jobs (TEMPORARY, fully isolated "2025 Archive" table — see §13).
+`0019` archive_2025_jobs (TEMPORARY, fully isolated "2025 Archive" table — see §13) ·
+`0020` external updates+comms read (relax `p_wu_read`/`p_cm_read` to `is_internal() or my_sponsors()`-scoped, so aggregator accounts get full progress + evidence-trail visibility on their own beneficiaries — see §15).
 
 ## 6. Key files
 
@@ -173,7 +174,7 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Onboarding escalation note:** the generic **Escalate to Aggregator/Sponsor** button (repo `onbRaiseToSponsor` → status `esc_sponsor`, remembers `esc_return_status`) is available to ALL internal staff who own a ticket — exco, manco AND **consultants** — at any non-esc stage (this was briefly manco/exco-only during the aggregator build; restored via `staff = role!=='external'` in OnboardingDetail). External (sponsor) users don't see it (can't escalate to themselves). On reaching `esc_sponsor`, `_onbApply` now also calls `app_notify_onb_sponsor` so the sponsor ACCOUNT(s) get an action-required notification (they have no user id in `participants`).
 
-**Migrations now through 0019.**
+**Migrations now through 0020.**
 
 ## 14. Monitech ESD load (backend bulk load into LIVE tables)
 
@@ -211,3 +212,13 @@ touched, and no shared module (repo.ts, useData) is imported. Rollback point: br
   entry + the two `/archive-2025` routes (or git-revert the feature commits / reset to the checkpoint branch).
 
  Realtime is live, so any new operational table should be added to the supabase_realtime publication too (the `feedback` table already is). Note: v_*_rag views are `security_invoker`, so any table they JOIN for labels (e.g. `intervention_catalogue`) must be READABLE by whichever role should see those labels — else the COALESCE fallback shows generic text (this was the "Intervention/-" bug fixed in 0017).
+
+## 15. Aggregator visibility + Onboarding UX (shipped)
+
+Requested: give **aggregator** accounts (e.g. BEE123) more visibility, and make Onboarding more browsable. Decisions locked with the user: **aggregators only** (standalone-sponsor externals stay Portal + My Work); **full transparency** for aggregators (progress + latest update **and** the comms/evidence trail).
+
+- **RLS (migration `0020`):** `p_wu_read` (weekly_updates) and `p_cm_read` (comms_log) relaxed from `is_internal()` to `is_internal() or <my_sponsors()-scoped>` (updates scoped via interventions→beneficiaries; comms via beneficiary_id). Internal read unchanged; a partner only ever sees their own beneficiaries. Scope is `my_sponsors()` so it technically also covers sponsor-only externals, but the UI restricts the richer pages to aggregators, so it's inert for them.
+- **Huddle for aggregators:** added `'huddle'` to `aggExtra` in `Layout.tsx` + `{agg && <Route path="/huddle">}` in `App.tsx`. `Huddle.tsx` is unchanged — it's read-only off `useData` (RLS-scoped), so it just works and now shows the full per-intervention update (incl. blocker/owner) for their beneficiaries.
+- **`ClientBeneficiaryDetail.tsx`:** no longer "client-safe". Added a **Progress updates** timeline (full six-field weekly updates, per intervention) + a **Communication & evidence log** (channel, context, follow-up email text). Read-only — still no edit/act controls. Removed the "notes not shared" disclaimer.
+- **`Onboarding.tsx` (full rewrite of the page component; helper modals unchanged):** added a **sponsor filter** (distinct `client_name`) and a **grouped-stage filter** via new `ONB_STAGE_GROUPS`/`onbGroupKey` in types.ts (buckets: Intake, Ember360, Welcome party, SOW, Escalation, Remediation/red). Replaced the long linear layout with a local **`Accordion`** component: active tickets grouped by stage bucket (a bucket with any `is_red` ticket auto-opens + shows a red dot); Welcome parties, Converted and Withdrawn are collapsed-by-default accordions.
+- **`ClientWork.tsx` (external My Work):** the onboarding area is now a proper **Onboarding** section with a highlighted **"Needs your action"** block for tickets whose baton is with the sponsor (`red_no_show`, `esc_sponsor`) — each opens `OnboardingDetail` in a modal so they can act (RLS `p_onb_ext_update` from 0016 already permits it); the rest stays the view-only pipeline. This surfaces onboarding escalations in My Work, which they previously never did. Applies to any external who owns such a ticket (not just aggregators — RLS keeps it to their own sponsor).
