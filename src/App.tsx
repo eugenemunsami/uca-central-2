@@ -55,6 +55,7 @@ export default function App() {
           {agg && <Route path="/beneficiaries" element={<Beneficiaries />} />}
           {agg && <Route path="/beneficiaries/:id" element={<ClientBeneficiaryDetail />} />}
           {agg && <Route path="/onboarding" element={<Onboarding />} />}
+          {agg && <Route path="/huddle" element={<Huddle />} />}
           <Route path="*" element={<Navigate to={home} replace />} />
         </Routes>
       </Layout>
