@@ -547,6 +547,19 @@ export const ONB_ACTIVE_ORDER: OnbStatus[] = [
 export const ONB_TERMINAL: OnbStatus[] = ['converted', 'withdrawn']
 export const ONB_ESC_STATUSES: OnbStatus[] = ['esc_manco', 'esc_sponsor']
 
+// Friendly stage buckets — used for the Onboarding filter dropdown and the accordion grouping so the
+// pipeline reads as a handful of stages rather than 17 raw statuses.
+export const ONB_STAGE_GROUPS: { key: string; label: string; statuses: OnbStatus[] }[] = [
+  { key: 'intake', label: 'Intake', statuses: ['invoice_requested', 'with_manco'] },
+  { key: 'ember', label: 'Ember360', statuses: ['ember_loading', 'ember_review', 'ember_revision'] },
+  { key: 'welcome', label: 'Welcome party', statuses: ['welcome_ready', 'welcome_invited', 'rolled_over'] },
+  { key: 'sow', label: 'SOW', statuses: ['attended', 'sow_sent'] },
+  { key: 'escalation', label: 'Escalation', statuses: ['esc_manco', 'esc_sponsor'] },
+  { key: 'remediation', label: 'Remediation / red', statuses: ['remediation', 'remediation_visit', 'red_no_show'] },
+]
+export const onbGroupKey = (status: OnbStatus): string =>
+  ONB_STAGE_GROUPS.find(g => g.statuses.includes(status))?.key ?? 'intake'
+
 export interface WelcomeParty {
   id: string
   party_date: string

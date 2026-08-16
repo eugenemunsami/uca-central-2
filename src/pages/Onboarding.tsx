@@ -1,14 +1,44 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { Plus, CalendarDays, Rocket, CheckCircle2, Ban, Search, Pencil, Trash2, Video } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Plus, CalendarDays, Rocket, Search, Pencil, Trash2, Video, ChevronDown } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { repo } from '../lib/repo'
 import { useAuth } from '../context/AuthContext'
 import {
-  ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_OWNER_LABEL, ONB_STATUS_OWNER, type OnbStatus, type WelcomeParty,
+  ONB_STAGE_GROUPS, onbGroupKey, ONB_OWNER_LABEL, ONB_STATUS_OWNER, ONB_TERMINAL, type WelcomeParty,
 } from '../lib/types'
 import { Empty, Modal, Field, timeAgo, fmtDate } from '../components/ui'
 import OnboardingDetail, { OnbStatusPill } from '../components/OnboardingDetail'
+
+function Accordion({ title, count, open, onToggle, red, action, children }: {
+  title: string; count?: number; open: boolean; onToggle: () => void; red?: boolean
+  action?: ReactNode; children: ReactNode
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-ink-600/60 bg-ink-800/30">
+      <div className="flex items-center gap-2 px-4 py-3">
+        <button onClick={onToggle} className="flex flex-1 items-center gap-2 text-left">
+          <ChevronDown size={16} className="text-white/40 transition-transform"
+            style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)' }} />
+          <span className="text-sm text-white">{title}</span>
+          {typeof count === 'number' && count > 0 && (
+            <span className="rounded-full bg-white/5 px-2 py-0.5 text-[11px] text-white/50">{count}</span>
+          )}
+          {red && <span className="h-1.5 w-1.5 rounded-full bg-flame" />}
+        </button>
+        {action}
+      </div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
+            <div className="space-y-2 px-4 pb-4 pt-1">{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
 
 export default function Onboarding() {
   const { onboardings, welcomeParties, welcomePartyInvites, sponsors, aggregators, loading } = useData()
@@ -18,24 +48,36 @@ export default function Onboarding() {
   const [partyOpen, setPartyOpen] = useState(false)
   const [editParty, setEditParty] = useState<WelcomeParty | null>(null)
   const [q, setQ] = useState('')
+  const [sponsorFilter, setSponsorFilter] = useState('all')
+  const [stageFilter, setStageFilter] = useState('all')
+  const [open, setOpen] = useState<Record<string, boolean>>({})
+  const isOpen = (k: string, def: boolean) => open[k] ?? def
+  const toggle = (k: string, def: boolean) => setOpen(o => ({ ...o, [k]: !(o[k] ?? def) }))
 
   const internal = user?.role === 'manco' || user?.role === 'exco'
 
   if (loading) return <div className="text-white/40">Loading…</div>
 
+  const sponsorOpts = Array.from(new Set(onboardings.map(o => o.client_name).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b))
+
   const matchQ = (o: typeof onboardings[number]) => {
     const s = q.trim().toLowerCase()
-    if (!s) return true
-    return [o.name, o.client_name, o.sponsor_name, o.invoice_number]
-      .some(v => (v ?? '').toLowerCase().includes(s))
+    if (s && ![o.name, o.client_name, o.sponsor_name, o.invoice_number].some(v => (v ?? '').toLowerCase().includes(s))) return false
+    if (sponsorFilter !== 'all' && o.client_name !== sponsorFilter) return false
+    return true
   }
-  const active = onboardings.filter(o => o.status !== 'converted' && o.status !== 'withdrawn' && matchQ(o))
+  const inStage = (o: typeof onboardings[number]) => stageFilter === 'all' || onbGroupKey(o.status) === stageFilter
+  const active = onboardings.filter(o => !ONB_TERMINAL.includes(o.status) && matchQ(o) && inStage(o))
   const converted = onboardings.filter(o => o.status === 'converted' && matchQ(o))
   const withdrawn = onboardings.filter(o => o.status === 'withdrawn' && matchQ(o))
   const sortByAction = (rows: typeof active) => [...rows].sort((x, y) => y.last_action_at.localeCompare(x.last_action_at))
+  const groups = ONB_STAGE_GROUPS
+    .map(g => ({ ...g, rows: sortByAction(active.filter(o => onbGroupKey(o.status) === g.key)) }))
+    .filter(g => g.rows.length > 0)
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl text-white">Onboarding</h1>
@@ -48,22 +90,75 @@ export default function Onboarding() {
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-white/25" />
-            <input className="input w-64 pl-9" placeholder="Search name, sponsor or invoice"
+            <input className="input w-56 pl-9" placeholder="Search name, sponsor or invoice"
               value={q} onChange={e => setQ(e.target.value)} />
           </div>
+          <select className="input w-auto" value={sponsorFilter} onChange={e => setSponsorFilter(e.target.value)}>
+            <option value="all">All sponsors</option>
+            {sponsorOpts.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className="input w-auto" value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
+            <option value="all">All stages</option>
+            {ONB_STAGE_GROUPS.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
+          </select>
           {internal && (
             <button className="btn-primary" onClick={() => setCreating(true)}><Plus size={16} /> New onboarding</button>
           )}
         </div>
       </header>
 
-      {/* welcome parties */}
+      {/* active tickets, grouped into stage buckets (red buckets open by default) */}
       <section className="space-y-3">
         <div className="flex items-center gap-2">
-          <CalendarDays size={16} className="text-lime" />
-          <h2 className="text-sm text-white">Welcome parties</h2>
-          {internal && <button className="ml-auto text-xs text-lime hover:underline" onClick={() => setPartyOpen(true)}>+ New party</button>}
+          <Rocket size={16} className="text-lime" />
+          <h2 className="text-sm text-white">In progress</h2>
+          {active.length > 0 && <span className="rounded-full bg-lime-soft px-2 py-0.5 text-[11px] text-lime">{active.length}</span>}
         </div>
+        {active.length === 0 ? (
+          <Empty text="Nothing in the onboarding pipeline right now." />
+        ) : (
+          <div className="space-y-2">
+            {groups.map(g => {
+              const hasRed = g.rows.some(o => o.is_red)
+              return (
+                <Accordion key={g.key} title={g.label} count={g.rows.length} red={hasRed}
+                  open={isOpen(g.key, hasRed)} onToggle={() => toggle(g.key, hasRed)}>
+                  {g.rows.map((o, i) => (
+                    <motion.div key={o.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.02 }}
+                      className={`card flex flex-wrap items-center justify-between gap-4 p-4 ${o.is_red ? 'border-flame/40' : ''}`}>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-white">{o.name}</span>
+                          <span className="text-white/30">·</span>
+                          <span className="text-sm text-white/60">{o.client_name}</span>
+                          <OnbStatusPill status={o.status} />
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                          <span className="text-white/40">
+                            <span className="text-white/25">Owner:</span> {ONB_OWNER_LABEL[ONB_STATUS_OWNER[o.status]]}
+                            {o.current_owner_id ? ` · ${o.owner_name}` : (ONB_STATUS_OWNER[o.status] === 'external' ? ` · ${o.sponsor_name}` : '')}
+                          </span>
+                          <span className="text-white/40"><span className="text-white/25">Last action:</span> {timeAgo(o.last_action_at)}</span>
+                          {o.invoice_number && <span className="text-white/40"><span className="text-white/25">Invoice:</span> {o.invoice_number}</span>}
+                        </div>
+                      </div>
+                      <button className="btn-primary" onClick={() => setViewId(o.id)}>View / act</button>
+                    </motion.div>
+                  ))}
+                </Accordion>
+              )
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* welcome parties — collapsed by default */}
+      <Accordion title="Welcome parties" count={welcomeParties.length}
+        open={isOpen('welcome_parties', false)} onToggle={() => toggle('welcome_parties', false)}
+        action={internal ? (
+          <button className="text-xs text-lime hover:underline" onClick={() => setPartyOpen(true)}>+ New party</button>
+        ) : undefined}>
         {welcomeParties.length === 0 ? (
           <Empty text="No welcome parties scheduled yet." />
         ) : (
@@ -103,63 +198,12 @@ export default function Onboarding() {
             })}
           </div>
         )}
-      </section>
+      </Accordion>
 
-      {/* active tickets, grouped by status */}
-      <section className="space-y-5">
-        <div className="flex items-center gap-2">
-          <Rocket size={16} className="text-lime" />
-          <h2 className="text-sm text-white">In progress</h2>
-          {active.length > 0 && <span className="rounded-full bg-lime-soft px-2 py-0.5 text-[11px] text-lime">{active.length}</span>}
-        </div>
-        {active.length === 0 ? (
-          <Empty text="Nothing in the onboarding pipeline right now." />
-        ) : (
-          ONB_ACTIVE_ORDER.map(status => {
-            const rows = sortByAction(active.filter(o => o.status === status))
-            if (rows.length === 0) return null
-            return (
-              <div key={status} className="space-y-2 rounded-xl border border-ink-600/60 bg-ink-800/30 p-3">
-                <div className="flex items-center gap-2">
-                  <div className="label">{ONB_STATUS_LABEL[status as OnbStatus]}</div>
-                  <span className="rounded-full bg-white/5 px-2 py-0.5 text-[10px] text-white/50">{rows.length}</span>
-                </div>
-                {rows.map((o, i) => (
-                  <motion.div key={o.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    className={`card flex flex-wrap items-center justify-between gap-4 p-4 ${o.is_red ? 'border-flame/40' : ''}`}>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-white">{o.name}</span>
-                        <span className="text-white/30">·</span>
-                        <span className="text-sm text-white/60">{o.client_name}</span>
-                        <OnbStatusPill status={o.status} />
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                        <span className="text-white/40">
-                          <span className="text-white/25">Owner:</span> {ONB_OWNER_LABEL[ONB_STATUS_OWNER[o.status]]}
-                          {o.current_owner_id ? ` · ${o.owner_name}` : (ONB_STATUS_OWNER[o.status] === 'external' ? ` · ${o.sponsor_name}` : '')}
-                        </span>
-                        <span className="text-white/40"><span className="text-white/25">Last action:</span> {timeAgo(o.last_action_at)}</span>
-                        {o.invoice_number && <span className="text-white/40"><span className="text-white/25">Invoice:</span> {o.invoice_number}</span>}
-                      </div>
-                    </div>
-                    <button className="btn-primary" onClick={() => setViewId(o.id)}>View / act</button>
-                  </motion.div>
-                ))}
-              </div>
-            )
-          })
-        )}
-      </section>
-
-      {/* converted */}
+      {/* converted — collapsed by default */}
       {converted.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 pt-2">
-            <CheckCircle2 size={15} className="text-lime" />
-            <div className="label">Converted to beneficiaries</div>
-          </div>
+        <Accordion title="Converted to beneficiaries" count={converted.length}
+          open={isOpen('converted', false)} onToggle={() => toggle('converted', false)}>
           {converted.map(o => (
             <button key={o.id} onClick={() => setViewId(o.id)}
               className="card flex w-full items-center justify-between gap-3 p-3.5 text-left opacity-60 transition hover:opacity-100">
@@ -167,16 +211,13 @@ export default function Onboarding() {
               <span className="shrink-0 text-[11px] text-white/30">SOW signed {fmtDate(o.sow_signed_date)}</span>
             </button>
           ))}
-        </section>
+        </Accordion>
       )}
 
-      {/* withdrawn */}
+      {/* withdrawn — collapsed by default */}
       {withdrawn.length > 0 && (
-        <section className="space-y-2">
-          <div className="flex items-center gap-2 pt-2">
-            <Ban size={15} className="text-white/30" />
-            <div className="label">Withdrawn</div>
-          </div>
+        <Accordion title="Withdrawn" count={withdrawn.length}
+          open={isOpen('withdrawn', false)} onToggle={() => toggle('withdrawn', false)}>
           {withdrawn.map(o => (
             <button key={o.id} onClick={() => setViewId(o.id)}
               className="card flex w-full items-center justify-between gap-3 p-3.5 text-left opacity-50 transition hover:opacity-100">
@@ -184,7 +225,7 @@ export default function Onboarding() {
               <span className="shrink-0 text-[11px] text-white/30">{o.withdrawn_reason ?? 'withdrawn'}</span>
             </button>
           ))}
-        </section>
+        </Accordion>
       )}
 
       {/* detail */}

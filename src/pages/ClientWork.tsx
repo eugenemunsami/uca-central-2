@@ -8,7 +8,7 @@ import { RAG_HEX } from '../lib/rag'
 import { ONB_STATUS_OWNER, ONB_OWNER_LABEL, ONB_TERMINAL, type BeneficiaryView } from '../lib/types'
 import { Empty, Field, Modal, StatCard, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
-import { OnbStatusPill } from '../components/OnboardingDetail'
+import OnboardingDetail, { OnbStatusPill } from '../components/OnboardingDetail'
 
 // Modal body for reviewing a beneficiary close-out sent to the client.
 // Acknowledging concludes the job; sending back returns it to UCA to fix.
@@ -113,7 +113,13 @@ export default function ClientWork() {
         (user?.external_client_id && o.client_id === user.external_client_id)))
       .sort((a, b) => b.last_action_at.localeCompare(a.last_action_at)),
     [onboardings, user])
+  // Onboarding tickets currently handed to this partner to act on (the baton sits with the sponsor).
+  const onbActionable = useMemo(
+    () => myOnboarding.filter(o => o.status === 'red_no_show' || o.status === 'esc_sponsor'), [myOnboarding])
+  const onbPipeline = useMemo(
+    () => myOnboarding.filter(o => o.status !== 'red_no_show' && o.status !== 'esc_sponsor'), [myOnboarding])
   const [openId, setOpenId] = useState<string | null>(null)
+  const [onbViewId, setOnbViewId] = useState<string | null>(null)
   const [reviewId, setReviewId] = useState<string | null>(null)
   const [bellOpen, setBellOpen] = useState(false)
 
@@ -242,24 +248,54 @@ export default function ClientWork() {
           className="rounded-2xl border border-ink-500 bg-ink-800/40 p-5">
           <div className="mb-4 flex items-center gap-2">
             <Rocket size={16} className="text-lime" />
-            <h2 className="text-sm text-white">Onboarding pipeline</h2>
+            <h2 className="text-sm text-white">Onboarding</h2>
             <span className="rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">{myOnboarding.length}</span>
           </div>
-          <p className="mb-3 text-xs text-white/50">Where your beneficiaries are in the pre-SOW journey. View-only — UCA records each step.</p>
-          <div className="space-y-2">
-            {myOnboarding.map(o => (
-              <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-900/50 p-3">
-                <div className="text-sm text-white/80">
-                  <span className="text-white">{o.name}</span>
-                  <span className="text-white/40"> · {o.sponsor_name}</span>
-                  <div className="mt-0.5 text-[11px] text-white/40">
-                    With {ONB_OWNER_LABEL[ONB_STATUS_OWNER[o.status]]} · last action {timeAgo(o.last_action_at)}
-                  </div>
-                </div>
-                <OnbStatusPill status={o.status} />
+
+          {onbActionable.length > 0 && (
+            <div className="mb-5 rounded-xl border border-flame/40 bg-flame/5 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Flame size={15} className="text-flame" />
+                <h3 className="text-sm text-white">Needs your action</h3>
+                <span className="rounded-full bg-flame/20 px-2 py-0.5 text-[11px] font-semibold text-flame">{onbActionable.length}</span>
               </div>
-            ))}
-          </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {onbActionable.map(o => (
+                  <div key={o.id} className="card flex flex-col gap-3 border-flame/30 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-white">{o.name}</div>
+                        <div className="mt-0.5 text-sm text-white/50">{o.sponsor_name}</div>
+                      </div>
+                      <OnbStatusPill status={o.status} />
+                    </div>
+                    <div className="text-[11px] text-white/30">Last action {timeAgo(o.last_action_at)}</div>
+                    <button onClick={() => setOnbViewId(o.id)} className="btn-primary self-start text-xs">Open / act</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {onbPipeline.length > 0 && (
+            <>
+              <p className="mb-3 text-xs text-white/50">Where your other beneficiaries are in the pre-SOW journey. View-only — UCA records each step.</p>
+              <div className="space-y-2">
+                {onbPipeline.map(o => (
+                  <div key={o.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-ink-900/50 p-3">
+                    <div className="text-sm text-white/80">
+                      <span className="text-white">{o.name}</span>
+                      <span className="text-white/40"> · {o.sponsor_name}</span>
+                      <div className="mt-0.5 text-[11px] text-white/40">
+                        With {ONB_OWNER_LABEL[ONB_STATUS_OWNER[o.status]]} · last action {timeAgo(o.last_action_at)}
+                      </div>
+                    </div>
+                    <OnbStatusPill status={o.status} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </motion.section>
       )}
 
@@ -398,6 +434,10 @@ export default function ClientWork() {
 
       <Modal open={openId !== null} onClose={() => setOpenId(null)} title="Escalation" wide>
         {openId && <EscalationDetail id={openId} onClose={() => setOpenId(null)} />}
+      </Modal>
+
+      <Modal open={onbViewId !== null} onClose={() => setOnbViewId(null)} title="Onboarding ticket" wide>
+        {onbViewId && <OnboardingDetail id={onbViewId} onClose={() => setOnbViewId(null)} />}
       </Modal>
 
       <Modal open={reviewBen !== null} onClose={() => setReviewId(null)} title="Review close-out">

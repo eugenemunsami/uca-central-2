@@ -1,16 +1,20 @@
 import { useMemo } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowLeft, FolderOpen, FileText, AlertTriangle, ExternalLink } from 'lucide-react'
+import { ArrowLeft, FolderOpen, FileText, AlertTriangle, ClipboardList, MessageSquare, Mail } from 'lucide-react'
 import { useData } from '../lib/useData'
 import {
   companyKey, LIFECYCLE_LABEL, STAGE_LABEL, STATUS_LABEL,
-  type BeneficiaryView, type InterventionView,
+  type BeneficiaryView, type InterventionView, type Channel,
 } from '../lib/types'
 import { Empty, RagPill, fmtDate, timeAgo } from '../components/ui'
 
-// Client-safe beneficiary view for aggregator/sponsor users. Shows progress, stage, RAG, funding and
-// the intervention list — but NOT the internal communication log or consultants' weekly-update notes.
+// Beneficiary view for aggregator accounts. Full read-only visibility of the current state: progress,
+// stage, RAG, funding, interventions, the consultants' update history and the communication / evidence
+// trail. Read-only — the edit and act controls stay internal.
+const CHANNEL_LABEL: Record<Channel, string> = {
+  call: 'Call', email: 'Email', meeting: 'Meeting', whatsapp: 'WhatsApp', site_visit: 'Site visit',
+}
 function DiscoveryTag({ iv }: { iv: InterventionView }) {
   const s = iv.discovery_status
   if (!s || s === 'na') return null
@@ -23,7 +27,7 @@ export default function ClientBeneficiaryDetail() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const asCompany = params.get('company') === '1'
-  const { beneficiaries, interventions, escalations, loading } = useData()
+  const { beneficiaries, interventions, escalations, updates, comms, people, loading } = useData()
 
   const primary = beneficiaries.find(b => b.id === id)
 
@@ -41,6 +45,17 @@ export default function ClientBeneficiaryDetail() {
   const openEsc = useMemo(
     () => escalations.filter(e => lineIds.has(e.beneficiary_id) && e.status !== 'resolved'),
     [escalations, lineIds])
+
+  const ivById = useMemo(() => new Map(ivs.map(i => [i.id, i] as const)), [ivs])
+  const benUpdates = useMemo(
+    () => updates.filter(u => ivById.has(u.intervention_id))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    [updates, ivById])
+  const benComms = useMemo(
+    () => comms.filter(c => lineIds.has(c.beneficiary_id))
+      .sort((a, b) => (b.occurred_at ?? '').localeCompare(a.occurred_at ?? '')),
+    [comms, lineIds])
+  const nameOf = (uid?: string | null) => people.find(p => p.id === uid)?.full_name ?? 'UCA'
 
   if (loading) return <div className="text-white/40">Loading…</div>
   if (!primary) return (
@@ -155,9 +170,72 @@ export default function ClientBeneficiaryDetail() {
         )}
       </section>
 
-      <p className="text-[11px] text-white/25">
-        Internal consultant notes and the UCA communication log are not shared in this view.
-      </p>
+      {benUpdates.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <ClipboardList size={16} className="text-lime" />
+            <h2 className="text-sm text-white">Progress updates</h2>
+            <span className="text-[12px] text-white/40">{benUpdates.length}</span>
+          </div>
+          <div className="space-y-2">
+            {benUpdates.map(u => (
+              <div key={u.id} className="card p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm text-white">{ivById.get(u.intervention_id)?.title ?? 'Intervention'}</span>
+                  <span className="text-[11px] text-white/40">{nameOf(u.author_id)} · {fmtDate(u.created_at)}</span>
+                </div>
+                <div className="mt-3 grid gap-x-6 gap-y-1 text-xs md:grid-cols-2">
+                  <UCell k="Completed" v={u.completed_work} />
+                  <UCell k="In progress" v={u.in_progress} />
+                  <UCell k="Blocker" v={u.blocker} danger />
+                  <UCell k="Owner" v={u.blocker_owner} />
+                  <UCell k="Next action" v={u.next_action} />
+                  <UCell k="Next update" v={u.next_update_due ? fmtDate(u.next_update_due) : null} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {benComms.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <MessageSquare size={16} className="text-lime" />
+            <h2 className="text-sm text-white">Communication &amp; evidence log</h2>
+            <span className="text-[12px] text-white/40">{benComms.length}</span>
+          </div>
+          <div className="space-y-2">
+            {benComms.map(c => (
+              <div key={c.id} className="card p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="inline-flex items-center gap-2 text-sm text-white">
+                    <span className="rounded-full bg-ink-700 px-2 py-0.5 text-[10px] uppercase tracking-wide text-white/60">{CHANNEL_LABEL[c.channel]}</span>
+                    {nameOf(c.author_id)}
+                  </span>
+                  <span className="text-[11px] text-white/40">{fmtDate(c.occurred_at)}</span>
+                </div>
+                {c.context && <p className="mt-2 whitespace-pre-wrap text-[13px] text-white/70">{c.context}</p>}
+                {c.followed_up_by_email && c.email_text && (
+                  <div className="mt-3 rounded-lg border border-ink-600 bg-ink-900/50 p-3">
+                    <div className="mb-1 flex items-center gap-1.5 text-[11px] text-white/40"><Mail size={12} /> Follow-up email</div>
+                    <p className="whitespace-pre-wrap text-[12px] text-white/60">{c.email_text}</p>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+    </div>
+  )
+}
+
+function UCell({ k, v, danger }: { k: string; v?: string | null; danger?: boolean }) {
+  return (
+    <div className="flex gap-2">
+      <span className="shrink-0 text-white/30">{k}</span>
+      <span className={danger && v ? 'text-flame' : 'text-white/70'}>{v ?? '—'}</span>
     </div>
   )
 }
