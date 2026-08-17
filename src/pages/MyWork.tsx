@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell, Clock, CheckCircle2, Sparkles, Eye,
-  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen, Rocket, ExternalLink,
+  FileCheck2, PackageCheck, Archive, Flame, FileDown, Send, FolderOpen, Rocket, ExternalLink, ClipboardList,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
@@ -15,6 +15,8 @@ import { STATUS_LABEL, ONB_TERMINAL, ONB_STATUS_LABEL, DISCOVERY_DONE, type IvSt
 import { Empty, Field, Modal, RagPill, StatCard, fmtDate, timeAgo } from '../components/ui'
 import EscalationDetail, { EscStatusPill } from '../components/EscalationDetail'
 import OnboardingDetail from '../components/OnboardingDetail'
+import { TaskCard } from './InternalTasks'
+import InternalTaskDetail from '../components/InternalTaskDetail'
 
 const ALL = '__all__'
 const uniq = (xs: string[]) => Array.from(new Set(xs)).sort((a, b) => a.localeCompare(b))
@@ -54,7 +56,7 @@ const fmtLong = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
 export default function MyWork() {
-  const { beneficiaries, interventions, updates, escalations, notifications, onboardings, people, loading } = useData()
+  const { beneficiaries, interventions, updates, escalations, notifications, onboardings, people, tasks, loading } = useData()
   const { user, can } = useAuth()
 
   const [fTitle, setFTitle] = useState(ALL)
@@ -65,6 +67,7 @@ export default function MyWork() {
   const [bellOpen, setBellOpen] = useState(false)
   const [viewEsc, setViewEsc] = useState<string | null>(null)
   const [viewOnb, setViewOnb] = useState<string | null>(null)
+  const [taskViewId, setTaskViewId] = useState<string | null>(null)
 
   // Onboarding tickets this user currently owns (baton sits with them) — so ownership shows in My Work.
   const myOnboarding = useMemo(
@@ -77,6 +80,18 @@ export default function MyWork() {
   const [closeoutNote, setCloseoutNote] = useState('')
 
   const sponsorOf = (bid: string) => beneficiaries.find(b => b.id === bid)?.client_name ?? null
+  const nameOf = (id?: string | null) => people.find(p => p.id === id)?.full_name ?? '—'
+
+  // Internal tasks I requested that are now submitted back and need MY verification (highest priority).
+  const tasksToVerify = useMemo(
+    () => tasks.filter(t => t.requester_id === user?.id && t.status === 'submitted'),
+    [tasks, user],
+  )
+  // Internal tasks assigned to me that are still to be worked.
+  const tasksAssignedToMe = useMemo(
+    () => tasks.filter(t => t.assignee_id === user?.id && (t.status === 'open' || t.status === 'in_progress')),
+    [tasks, user],
+  )
 
   const isStale = (id: string, createdAt: string) => {
     const last = updates.filter(u => u.intervention_id === id)
@@ -420,6 +435,44 @@ export default function MyWork() {
         </StatToggle>
       </div>
 
+      {(tasksToVerify.length > 0 || tasksAssignedToMe.length > 0) && (
+        <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
+          <div className="mb-4 flex items-center gap-2">
+            <ClipboardList size={16} className="text-lime" />
+            <h2 className="text-sm text-white">Internal tasks</h2>
+            <span className="rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">{tasksToVerify.length + tasksAssignedToMe.length}</span>
+          </div>
+          {tasksToVerify.length > 0 && (
+            <div className="mb-4 rounded-xl border border-amber-400/40 bg-amber-400/5 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Flame size={14} className="text-amber-400" />
+                <h3 className="text-xs font-medium text-white">Needs your verification</h3>
+                <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-400">{tasksToVerify.length}</span>
+              </div>
+              <div className="space-y-2">
+                {tasksToVerify.map(t => (
+                  <TaskCard key={t.id} task={t} nameOf={nameOf} onOpen={() => setTaskViewId(t.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+          {tasksAssignedToMe.length > 0 && (
+            <div>
+              <div className="mb-3 flex items-center gap-2">
+                <ClipboardList size={14} className="text-white/40" />
+                <h3 className="text-xs font-medium text-white">Assigned to me</h3>
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[11px] text-white/50">{tasksAssignedToMe.length}</span>
+              </div>
+              <div className="space-y-2">
+                {tasksAssignedToMe.map(t => (
+                  <TaskCard key={t.id} task={t} nameOf={nameOf} onOpen={() => setTaskViewId(t.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+        </motion.section>
+      )}
+
       {can('manage') && closeoutRequests.length > 0 && (
         <motion.section initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-5">
           <div className="mb-4 flex items-center gap-2">
@@ -691,6 +744,8 @@ export default function MyWork() {
       <Modal open={Boolean(viewEsc)} onClose={() => setViewEsc(null)} title="Escalation" wide>
         {viewEsc && <EscalationDetail id={viewEsc} onClose={() => setViewEsc(null)} />}
       </Modal>
+
+      {taskViewId && <InternalTaskDetail taskId={taskViewId} onClose={() => setTaskViewId(null)} />}
 
       <Modal open={Boolean(closeoutBen)} onClose={() => setCloseoutBen(null)} title="Produce & send close-out">
         {closeoutTarget && (
