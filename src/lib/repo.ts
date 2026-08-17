@@ -8,6 +8,7 @@ import type {
   Notification, Profile, Rag, RagOverride, Role, Sponsor, UserEvent, UserStatus, WeeklyUpdate,
   Onboarding, OnboardingEvent, OnboardingView, OnbStatus, OnbOwnerRole, OnbEventKind,
   WelcomeParty, WelcomePartyInvite, Feedback,
+  InternalTask, InternalTaskSubtask, InternalTaskComment, InternalTaskView, TaskPriority,
 } from './types'
 
 const uid = () => Math.random().toString(36).slice(2, 10)
@@ -32,6 +33,9 @@ const db = {
   welcomePartyInvites: [...seed.welcomePartyInvites],
   onboardingEvents: [...seed.onboardingEvents],
   feedback: [] as Feedback[],
+  internalTasks: [...seed.internalTasks] as InternalTask[],
+  internalTaskSubtasks: [...seed.internalTaskSubtasks] as InternalTaskSubtask[],
+  internalTaskComments: [...seed.internalTaskComments] as InternalTaskComment[],
 }
 
 const listeners = new Set<() => void>()
@@ -54,6 +58,7 @@ if (LIVE && supabase) {
     'beneficiaries', 'interventions', 'weekly_updates', 'comms_log', 'escalations', 'escalation_events',
     'beneficiary_events', 'user_events', 'notifications', 'rag_overrides', 'onboardings', 'onboarding_events',
     'welcome_parties', 'welcome_party_invites', 'profiles', 'intervention_catalogue', 'feedback',
+    'internal_tasks', 'internal_task_subtasks', 'internal_task_comments',
   ]
   for (const table of REALTIME_TABLES) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table }, refreshSoon)
@@ -1444,6 +1449,165 @@ export const repo = {
   async deleteFeedback(id: string) {
     db.feedback = db.feedback.filter(f => f.id !== id)
     if (LIVE) await supabase!.from('feedback').delete().eq('id', id)
+    ping()
+  },
+
+  // ================= Internal Tasks (staff-to-staff work) =================
+  // Self-contained: no beneficiary / onboarding coupling. RLS scopes reads to own+raised (Exco sees all).
+  async tasks(): Promise<InternalTaskView[]> {
+    if (!LIVE) {
+      return db.internalTasks
+        .map(t => ({
+          ...t,
+          subtasks: db.internalTaskSubtasks.filter(s => s.task_id === t.id).sort((a, z) => a.sort_order - z.sort_order),
+          comments: db.internalTaskComments.filter(c => c.task_id === t.id).sort((a, z) => a.created_at.localeCompare(z.created_at)),
+        }))
+        .sort((a, z) => z.created_at.localeCompare(a.created_at))
+    }
+    const [tasks, subs, comms] = await Promise.all([
+      sb<InternalTask[]>(() => supabase!.from('internal_tasks').select('*').order('created_at', { ascending: false }) as never),
+      sb<InternalTaskSubtask[]>(() => supabase!.from('internal_task_subtasks').select('*').order('sort_order', { ascending: true }) as never),
+      sb<InternalTaskComment[]>(() => supabase!.from('internal_task_comments').select('*').order('created_at', { ascending: true }) as never),
+    ])
+    return tasks.map(t => ({
+      ...t,
+      subtasks: subs.filter(s => s.task_id === t.id),
+      comments: comms.filter(c => c.task_id === t.id),
+    }))
+  },
+
+  async _taskRow(id: string): Promise<InternalTask | null> {
+    if (!LIVE) return db.internalTasks.find(t => t.id === id) ?? null
+    const rows = await sb<InternalTask[]>(() => supabase!.from('internal_tasks').select('*').eq('id', id).limit(1) as never)
+    return rows[0] ?? null
+  },
+
+  // Anyone internal raises a task and assigns it to a colleague. Notifies the assignee (unless self).
+  async addTask(input: {
+    title: string; detail?: string | null; assignee_id: string; requester_id: string;
+    priority?: TaskPriority; due_date?: string | null; subtasks?: string[]
+  }) {
+    const priority: TaskPriority = input.priority ?? 'medium'
+    const subs = (input.subtasks ?? []).map(s => s.trim()).filter(Boolean)
+    if (LIVE) {
+      const rows = await sb<{ id: string }[]>(() => supabase!.from('internal_tasks').insert({
+        title: input.title.trim(), detail: input.detail?.trim() || null,
+        assignee_id: input.assignee_id, requester_id: input.requester_id,
+        priority, status: 'open', due_date: input.due_date || null,
+      }).select('id') as never)
+      const tid = rows[0]?.id
+      if (tid) {
+        if (subs.length) await supabase!.from('internal_task_subtasks').insert(subs.map((title, i) => ({ task_id: tid, title, sort_order: i })))
+        if (input.assignee_id !== input.requester_id) try {
+          await supabase!.rpc('app_notify', { recipient_ids: [input.assignee_id], p_kind: 'task_assigned', p_text: `New task assigned to you: ${input.title.trim()}.`, p_action_owner: input.assignee_id })
+        } catch { /* best-effort */ }
+      }
+      ping(); return
+    }
+    const id = uid()
+    const t = new Date().toISOString()
+    db.internalTasks.unshift({
+      id, title: input.title.trim(), detail: input.detail?.trim() || null,
+      requester_id: input.requester_id, assignee_id: input.assignee_id,
+      priority, status: 'open', due_date: input.due_date || null,
+      submitted_at: null, verified_at: null, return_reason: null, created_at: t, updated_at: t,
+    })
+    subs.forEach((title, i) => db.internalTaskSubtasks.push({ id: uid(), task_id: id, title, done: false, sort_order: i, created_at: t }))
+    if (input.assignee_id !== input.requester_id) notify([input.assignee_id], 'task_assigned', `New task assigned to you: ${input.title.trim()}.`, '')
+    ping()
+  },
+
+  async updateTask(id: string, patch: Partial<InternalTask>) {
+    const full: Partial<InternalTask> = { ...patch, updated_at: new Date().toISOString() }
+    const i = db.internalTasks.findIndex(t => t.id === id)
+    if (i >= 0) db.internalTasks[i] = { ...db.internalTasks[i], ...full }
+    if (LIVE) await supabase!.from('internal_tasks').update(full).eq('id', id)
+    ping()
+  },
+
+  // Assignee picks the task up.
+  async startTask(id: string) {
+    await repo.updateTask(id, { status: 'in_progress' })
+  },
+
+  // Assignee marks the work done -> awaits the requester's verification. A self-assigned task
+  // (requester == assignee) has no separate verifier, so it completes immediately.
+  async submitTask(id: string) {
+    const t = await repo._taskRow(id)
+    if (!t) return
+    const selfTask = t.requester_id === t.assignee_id
+    await repo.updateTask(id, selfTask
+      ? { status: 'done', submitted_at: new Date().toISOString(), verified_at: new Date().toISOString() }
+      : { status: 'submitted', submitted_at: new Date().toISOString() })
+    if (selfTask) return
+    if (LIVE) { try { await supabase!.rpc('app_notify', { recipient_ids: [t.requester_id], p_kind: 'task_submitted', p_text: `Task ready to verify: ${t.title}.`, p_action_owner: t.requester_id }) } catch { /* best-effort */ } }
+    else notify([t.requester_id], 'task_submitted', `Task ready to verify: ${t.title}.`, '')
+  },
+
+  // Requester verifies -> done. Notifies the assignee it was accepted.
+  async verifyTask(id: string) {
+    const t = await repo._taskRow(id)
+    if (!t) return
+    await repo.updateTask(id, { status: 'done', verified_at: new Date().toISOString() })
+    if (t.assignee_id === t.requester_id) return
+    if (LIVE) { try { await supabase!.rpc('app_notify', { recipient_ids: [t.assignee_id], p_kind: 'task_verified', p_text: `Task verified & closed: ${t.title}.` }) } catch { /* best-effort */ } }
+    else notify([t.assignee_id], 'task_verified', `Task verified & closed: ${t.title}.`, '')
+  },
+
+  // Requester sends it back with a reason -> back to the assignee to finish.
+  async returnTask(id: string, reason: string) {
+    const t = await repo._taskRow(id)
+    if (!t) return
+    await repo.updateTask(id, { status: 'in_progress', return_reason: reason, submitted_at: null })
+    if (t.assignee_id === t.requester_id) return
+    if (LIVE) { try { await supabase!.rpc('app_notify', { recipient_ids: [t.assignee_id], p_kind: 'task_returned', p_text: `Task sent back: ${t.title} — ${reason}`, p_action_owner: t.assignee_id }) } catch { /* best-effort */ } }
+    else notify([t.assignee_id], 'task_returned', `Task sent back: ${t.title} — ${reason}`, '')
+  },
+
+  async deleteTask(id: string) {
+    db.internalTasks = db.internalTasks.filter(t => t.id !== id)
+    db.internalTaskSubtasks = db.internalTaskSubtasks.filter(s => s.task_id !== id)
+    db.internalTaskComments = db.internalTaskComments.filter(c => c.task_id !== id)
+    if (LIVE) await supabase!.from('internal_tasks').delete().eq('id', id)
+    ping()
+  },
+
+  async addSubtask(taskId: string, title: string) {
+    const order = db.internalTaskSubtasks.filter(s => s.task_id === taskId).length
+    if (LIVE) { await supabase!.from('internal_task_subtasks').insert({ task_id: taskId, title: title.trim(), sort_order: order }); ping(); return }
+    db.internalTaskSubtasks.push({ id: uid(), task_id: taskId, title: title.trim(), done: false, sort_order: order, created_at: new Date().toISOString() })
+    ping()
+  },
+
+  async toggleSubtask(id: string, done: boolean) {
+    const i = db.internalTaskSubtasks.findIndex(s => s.id === id)
+    if (i >= 0) db.internalTaskSubtasks[i] = { ...db.internalTaskSubtasks[i], done }
+    if (LIVE) await supabase!.from('internal_task_subtasks').update({ done }).eq('id', id)
+    ping()
+  },
+
+  async deleteSubtask(id: string) {
+    db.internalTaskSubtasks = db.internalTaskSubtasks.filter(s => s.id !== id)
+    if (LIVE) await supabase!.from('internal_task_subtasks').delete().eq('id', id)
+    ping()
+  },
+
+  // A note/comment on a task. Notifies the OTHER party (assignee <-> requester).
+  async addTaskComment(taskId: string, authorId: string | null, body: string) {
+    const t = await repo._taskRow(taskId)
+    if (LIVE) {
+      await supabase!.from('internal_task_comments').insert({ task_id: taskId, author_id: authorId, body: body.trim() })
+      if (t) {
+        const other = authorId === t.requester_id ? t.assignee_id : t.requester_id
+        if (other && other !== authorId) try { await supabase!.rpc('app_notify', { recipient_ids: [other], p_kind: 'task_comment', p_text: `New comment on task: ${t.title}.` }) } catch { /* best-effort */ }
+      }
+      ping(); return
+    }
+    db.internalTaskComments.push({ id: uid(), task_id: taskId, author_id: authorId, body: body.trim(), created_at: new Date().toISOString() })
+    if (t) {
+      const other = authorId === t.requester_id ? t.assignee_id : t.requester_id
+      if (other && other !== authorId) notify([other], 'task_comment', `New comment on task: ${t.title}.`, '')
+    }
     ping()
   },
 
