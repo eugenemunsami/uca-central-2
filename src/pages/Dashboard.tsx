@@ -5,14 +5,16 @@ import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users, Rocket, CheckCircle2, Ban, CalendarDays,
+  AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users, Rocket, CheckCircle2, Ban, CalendarDays, ListChecks,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { RAG_HEX } from '../lib/rag'
 import {
   FUNNEL_STAGES, STAGE_LABEL, ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL,
+  TASK_ACTIVE_STATUSES, TASK_STATUS_LABEL,
   type Rag, type OnbOwnerRole, type OnboardingView, type WelcomeParty, type WelcomePartyInvite,
+  type InternalTaskView, type TaskStatus, type Profile,
 } from '../lib/types'
 import { Empty, RagPill, StatCard, timeAgo, fmtDate } from '../components/ui'
 import { EscStatusPill } from '../components/EscalationDetail'
@@ -24,14 +26,17 @@ const tip = {
 }
 
 export default function Dashboard() {
-  const { beneficiaries, interventions, escalations, people, onboardings, welcomeParties, welcomePartyInvites, loading } = useData()
+  const { beneficiaries, interventions, escalations, people, onboardings, welcomeParties, welcomePartyInvites, tasks, loading } = useData()
   const { user } = useAuth()
   // Aggregator/sponsor users see the same dashboard scoped to their programme (RLS), minus the
   // internal-only cuts (consultant workload, the internal project-manager column).
   const isExternal = user?.role === 'external'
   const [tab, setTab] = useState('all')
   const [rag, setRag] = useState<'all' | Rag>('all')
-  const [view, setView] = useState<'delivery' | 'onboarding'>('delivery')
+  const [view, setView] = useState<'delivery' | 'onboarding' | 'tasks'>('delivery')
+  const isExco = user?.role === 'exco'
+  // Non-exco users must never land on the exco-only tasks view.
+  const effectiveView = view === 'tasks' && !isExco ? 'delivery' : view
 
   // One tab per distinct sponsor/aggregator (grouped by client_name), with counts.
   const clientTabs = useMemo(() => {
@@ -106,8 +111,14 @@ export default function Dashboard() {
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${view === 'onboarding' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
               <Rocket size={14} /> Onboarding
             </button>
+            {isExco && (
+              <button onClick={() => setView('tasks')}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${view === 'tasks' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
+                <ListChecks size={14} /> Internal tasks
+              </button>
+            )}
           </div>
-          {view === 'delivery' && (
+          {effectiveView === 'delivery' && (
             <select className="input w-auto" value={rag} onChange={e => setRag(e.target.value as never)}>
               <option value="all">All statuses</option>
               <option value="red">Red only</option>
@@ -118,11 +129,15 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {view === 'onboarding' && (
+      {effectiveView === 'onboarding' && (
         <OnboardingSummary onboardings={onboardings} welcomeParties={welcomeParties} welcomePartyInvites={welcomePartyInvites} />
       )}
 
-      {view === 'delivery' && <>
+      {effectiveView === 'tasks' && (
+        <TaskWorkloadSummary tasks={tasks} people={people} />
+      )}
+
+      {effectiveView === 'delivery' && <>
       <div className="flex flex-wrap gap-1 rounded-lg bg-ink-800 p-1">
         <button onClick={() => setTab('all')}
           className={`rounded-md px-4 py-2 text-sm transition-colors ${
@@ -440,6 +455,91 @@ function OnboardingSummary({ onboardings, welcomeParties, welcomePartyInvites }:
           Open the Onboarding tab <ArrowUpRight size={14} />
         </Link>
       </div>
+    </div>
+  )
+}
+
+const TASK_STATUS_ORDER: Record<TaskStatus, number> = { open: 0, in_progress: 1, submitted: 2, done: 3 }
+
+function TaskWorkloadSummary({ tasks, people }: {
+  tasks: InternalTaskView[]
+  people: Profile[]
+}) {
+  const nameOf = (id: string) => people.find(p => p.id === id)?.full_name ?? '-'
+
+  const active = tasks.filter(t => TASK_ACTIVE_STATUSES.includes(t.status))
+  const openCount = tasks.filter(t => t.status === 'open').length
+  const awaiting = tasks.filter(t => t.status === 'submitted').length
+
+  // Active-task workload per internal person, by who executes the work (assignee).
+  const internal = people.filter(p => p.role !== 'external')
+  const byAssignee = internal
+    .map(p => ({
+      id: p.id,
+      name: p.full_name,
+      count: tasks.filter(t => t.assignee_id === p.id && TASK_ACTIVE_STATUSES.includes(t.status)).length,
+    }))
+    .filter(d => d.count > 0)
+    .sort((a, b) => b.count - a.count)
+  const maxAssignee = Math.max(1, ...byAssignee.map(d => d.count))
+
+  const drill = [...active].sort((a, b) =>
+    (TASK_STATUS_ORDER[a.status] - TASK_STATUS_ORDER[b.status])
+    || (a.due_date ?? '').localeCompare(b.due_date ?? ''))
+
+  if (tasks.length === 0) return <Empty text="No internal tasks yet." />
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatCard label="Active tasks" value={active.length} icon={<ListChecks size={20} />}
+          sub={`${tasks.length} tasks in total`} delay={0} />
+        <StatCard label="Open tasks" value={openCount} accent="#9FD150" icon={<CheckCircle2 size={20} />}
+          sub="not yet started or in progress" delay={0.05} />
+        <StatCard label="Awaiting verification" value={awaiting} accent={RAG_HEX.amber} icon={<AlertTriangle size={20} />}
+          sub="submitted, pending sign-off" delay={0.1} />
+      </div>
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+        className="card p-5">
+        <div className="label mb-3">Active workload per person</div>
+        {byAssignee.length === 0 ? <Empty text="Nothing active." /> : (
+          <div className="space-y-3">
+            {byAssignee.map(d => (
+              <div key={d.id}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span className="text-white/60">{d.name}</span>
+                  <span className="text-white/40">{d.count}</span>
+                </div>
+                <div className="h-2 rounded-full bg-ink-700">
+                  <div className="h-2 rounded-full" style={{ width: `${(d.count / maxAssignee) * 100}%`, background: '#9FD150' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+        className="card p-5">
+        <div className="label mb-3">Active tasks</div>
+        {drill.length === 0 ? <Empty text="Nothing active." /> : (
+          <div className="space-y-2">
+            {drill.map(t => (
+              <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg bg-ink-800 px-3 py-2.5">
+                <div className="min-w-0">
+                  <div className="truncate text-sm text-white">{t.title}</div>
+                  <div className="text-[11px] text-white/40">{nameOf(t.assignee_id)} → {nameOf(t.requester_id)}</div>
+                </div>
+                <div className="flex shrink-0 items-center gap-3 text-[11px] text-white/40">
+                  <span className="text-white/60">{TASK_STATUS_LABEL[t.status]}</span>
+                  <span>{t.due_date ? fmtDate(t.due_date) : 'No due date'}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
     </div>
   )
 }
