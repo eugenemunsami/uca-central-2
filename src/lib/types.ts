@@ -63,6 +63,7 @@ export const TOGGLEABLE_SECTIONS: { key: string; label: string; path: string; ro
   { key: 'onboarding', label: 'Onboarding', path: '/onboarding', roles: ['exco', 'manco', 'consultant'] },
   { key: 'huddle', label: 'The Huddle', path: '/huddle', roles: ['exco', 'manco', 'consultant'] },
   { key: 'escalations', label: 'Escalations', path: '/escalations', roles: ['exco', 'manco', 'consultant'] },
+  { key: 'tasks', label: 'Internal Tasks', path: '/tasks', roles: ['exco', 'manco', 'consultant'] },
   { key: 'admin', label: 'Admin', path: '/admin', roles: ['exco', 'manco'] },
   { key: 'portal', label: 'Portal', path: '/portal', roles: ['external'] },
 ]
@@ -414,6 +415,7 @@ export type NotificationKind =
   | 'intervention_closed' | 'beneficiary_closeout_ready' | 'beneficiary_closeout_sent'
   | 'beneficiary_concluded' | 'beneficiary_returned' | 'sla_breach_internal' | 'delay_granted'
   | 'onboarding'
+  | 'task_assigned' | 'task_comment' | 'task_submitted' | 'task_returned' | 'task_verified'
 
 export interface Notification {
   id: string
@@ -675,4 +677,64 @@ export interface OnboardingView extends Onboarding {
   consultant_name: string | null
   welcome_party_date: string | null
   is_red: boolean            // 2 consecutive missed welcome parties
+}
+
+// ================= Internal Tasks (staff-to-staff work) =================
+// Ad-hoc internal jobs UCA staff assign to each other — separate from beneficiary delivery and
+// onboarding. A requester raises a task and assigns it to a colleague; the assignee does the work and
+// submits it; the requester verifies (done) or sends it back with a reason. Internal-only.
+//   open        : raised, not yet started by the assignee
+//   in_progress : assignee is working on it (also the state after a send-back)
+//   submitted   : assignee marked it done — awaiting the requester's verification
+//   done        : requester verified it complete
+export type TaskStatus = 'open' | 'in_progress' | 'submitted' | 'done'
+export type TaskPriority = 'low' | 'medium' | 'high'
+
+export const TASK_STATUS_LABEL: Record<TaskStatus, string> = {
+  open: 'To do', in_progress: 'In progress', submitted: 'Awaiting verification', done: 'Completed',
+}
+export const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = {
+  low: 'Low', medium: 'Medium', high: 'High',
+}
+export const TASK_PRIORITIES: TaskPriority[] = ['high', 'medium', 'low']
+export const TASK_ACTIVE_STATUSES: TaskStatus[] = ['open', 'in_progress', 'submitted']
+
+export interface InternalTask {
+  id: string
+  title: string
+  detail?: string | null
+  requester_id: string                 // who raised / owns the request (verifies)
+  assignee_id: string                  // who does the work (executes)
+  priority: TaskPriority
+  status: TaskStatus
+  due_date?: string | null
+  submitted_at?: string | null
+  verified_at?: string | null
+  return_reason?: string | null        // reason attached to the most recent send-back
+  created_at: string
+  updated_at?: string | null
+}
+
+export interface InternalTaskSubtask {
+  id: string
+  task_id: string
+  title: string
+  done: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface InternalTaskComment {
+  id: string
+  task_id: string
+  author_id?: string | null
+  body: string
+  created_at: string
+}
+
+// Decorated task for the UI: its sub-tasks and comment thread nested in. Names are resolved in the
+// page from the shared `people` list (same pattern as the other views), so no join is needed here.
+export interface InternalTaskView extends InternalTask {
+  subtasks: InternalTaskSubtask[]
+  comments: InternalTaskComment[]
 }
