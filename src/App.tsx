@@ -12,6 +12,7 @@ import Onboarding from './pages/Onboarding'
 import MyWork from './pages/MyWork'
 import Huddle from './pages/Huddle'
 import Escalations from './pages/Escalations'
+import InternalTasks from './pages/InternalTasks'
 import Admin from './pages/Admin'
 import Portal from './pages/Portal'
 import ClientWork from './pages/ClientWork'
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/my-work" element={<MyWork />} />
         <Route path="/huddle" element={<Huddle />} />
         <Route path="/escalations" element={<Escalations />} />
+        <Route path="/tasks" element={<InternalTasks />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/central-hub" element={<CentralHub />} />
         <Route path="/archive-2025" element={<Archive2025 />} />
