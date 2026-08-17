@@ -233,7 +233,8 @@ export default function Beneficiaries() {
             </div>
           )}
           {can('manage') && (
-            <button className="btn-primary" onClick={() => { resetModal(); setOpen(true) }}>
+            <button className="btn-primary btn-rim-shimmer"
+              onClick={() => { resetModal(); setOpen(true) }}>
               <Plus size={16} /> Load beneficiary
             </button>
           )}

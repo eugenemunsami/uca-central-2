@@ -92,6 +92,65 @@ h1, h2, h3, .display { font-family: Roboto, Arial, sans-serif; font-weight: 900;
   55%, 100% { transform: translateX(160%); }
 }
 
+/* ---- Rim shimmer (opt-in, per-button) ----------------------------------- */
+/* Adapted from the 21st.dev / Magic UI "shimmer button" (@dillionverma), cut
+   down to the rim only: a bright spark travels around the button's edge while
+   the face keeps its own background and hover colour.
+   The original stacks a rotating conic-gradient behind an inset backdrop to
+   mask everything but the border. We can't do that here without adding DOM,
+   so instead a single conic gradient is masked to a thin ring with
+   mask-composite. Costs one pseudo-element and no markup change.
+   Opt in by adding `btn-rim-shimmer` alongside btn-primary/ghost/danger.
+   NOTE: on a btn-primary this replaces the drifting idle sheen (same
+   ::before); the hover sweep (::after) is untouched. */
+@property --rim-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* Scoped by element, not by `.btn`: Tailwind copies any rule that mentions
+   `.btn` into every class that `@apply btn`s it (primary/ghost/danger), so a
+   `.btn.btn-rim-shimmer` selector ships four identical times. The element also
+   lifts specificity above `.btn-primary::before`, so the override no longer
+   depends on source order. */
+button.btn-rim-shimmer::before,
+a.btn-rim-shimmer::before,
+label.btn-rim-shimmer::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  padding: 1.5px;                 /* = rim thickness */
+  transform: none;                /* cancel the idle-sheen offset */
+  background: conic-gradient(
+    from var(--rim-angle),
+    transparent 0deg,
+    rgba(255, 255, 255, 0.15) 25deg,
+    rgba(255, 255, 255, 0.95) 50deg,
+    rgba(255, 255, 255, 0.15) 75deg,
+    transparent 100deg
+  );
+  /* Punch out the middle so only the 1.5px ring paints. */
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite: exclude;
+  animation: btn-rim-spin 6s linear infinite;
+}
+
+/* Constant motion, so linear. The holds at 15-35% / 65-85% are the reference
+   component's easing: the spark sprints across the short edges and lingers
+   along the long ones, which reads as a lap rather than a metronome. */
+@keyframes btn-rim-spin {
+  0%       { --rim-angle: 0deg; }
+  15%, 35% { --rim-angle: 90deg; }
+  65%, 85% { --rim-angle: 270deg; }
+  100%     { --rim-angle: 360deg; }
+}
+
 /* ---- Soft page-content fade-in ------------------------------------------ */
 .page-fade { animation: page-fade-in 0.5s ease-out both; }
 @keyframes page-fade-in {
@@ -104,6 +163,10 @@ h1, h2, h3, .display { font-family: Roboto, Arial, sans-serif; font-weight: 900;
   .btn-primary::before,
   .btn-primary::after,
   .btn-ghost::after { animation: none !important; }
+  /* Rim keeps its static glint (colour, no movement) rather than vanishing. */
+  button.btn-rim-shimmer::before,
+  a.btn-rim-shimmer::before,
+  label.btn-rim-shimmer::before { animation: none !important; }
   .card-hover { @apply hover:translate-y-0; }
   .page-fade { animation: none; }
 }
