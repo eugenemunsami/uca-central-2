@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket, LifeBuoy, Archive,
+  LayoutDashboard, Users, Briefcase, CalendarDays, Settings, LogOut, Building2, AlertTriangle, Rocket, LifeBuoy, Archive, ClipboardList,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useAuth } from '../context/AuthContext'
@@ -16,6 +16,7 @@ const nav = [
   { to: '/my-work', label: 'My work', icon: Briefcase, roles: ['external'] },
   { to: '/huddle', label: 'The Huddle', icon: CalendarDays, roles: ['exco', 'manco', 'consultant'], key: 'huddle' },
   { to: '/escalations', label: 'Escalations', icon: AlertTriangle, roles: ['exco', 'manco', 'consultant'], key: 'escalations' },
+  { to: '/tasks', label: 'Internal Tasks', icon: ClipboardList, roles: ['exco', 'manco', 'consultant'], key: 'tasks' },
   { to: '/portal', label: 'Portal', icon: Building2, roles: ['external'], key: 'portal' },
   { to: '/admin', label: 'Admin', icon: Settings, roles: ['exco', 'manco'], key: 'admin' },
 ]
