@@ -699,6 +699,35 @@ export const TASK_PRIORITY_LABEL: Record<TaskPriority, string> = {
 export const TASK_PRIORITIES: TaskPriority[] = ['high', 'medium', 'low']
 export const TASK_ACTIVE_STATUSES: TaskStatus[] = ['open', 'in_progress', 'submitted']
 
+// What a task RELATES TO — a work-stream label the requester sets so the receiver has clear
+// direction. Deliberately FREE TEXT (migration 0022): it may be something Central has no concept of.
+// These are only the starting suggestions; the UI merges them with every value already in use, so
+// the list converges on what the team actually types without ever blocking a new one.
+export const TASK_CATEGORY_SUGGESTIONS = [
+  'Beneficiaries', 'Onboarding', 'Admin', 'Hearts Day', 'Escalations',
+  'Sponsors', 'Events', 'Finance', 'Reporting', 'Systems',
+]
+
+// Build the suggestion list for the "Related to" input: seeds + what's already in use, deduped
+// case-insensitively (first spelling seen wins) and sorted.
+export function taskCategoryOptions(used: (string | null | undefined)[]): string[] {
+  const seen = new Map<string, string>()
+  for (const v of [...TASK_CATEGORY_SUGGESTIONS, ...used]) {
+    const s = (v ?? '').trim()
+    if (s && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s)
+  }
+  return [...seen.values()].sort((a, z) => a.localeCompare(z))
+}
+
+// Minutes -> "1h 30m" / "45m" / "2h". Returns null when nothing was logged, so callers can hide the
+// field entirely rather than print a misleading "0m".
+export function fmtMinutes(mins?: number | null): string | null {
+  if (mins == null || mins <= 0) return null
+  const h = Math.floor(mins / 60), m = mins % 60
+  if (!h) return `${m}m`
+  return m ? `${h}h ${m}m` : `${h}h`
+}
+
 export interface InternalTask {
   id: string
   title: string
@@ -707,8 +736,10 @@ export interface InternalTask {
   assignee_id: string                  // who does the work (executes)
   priority: TaskPriority
   status: TaskStatus
+  category?: string | null             // free-text work-stream this relates to (required by the UI)
   due_date?: string | null
   submitted_at?: string | null
+  time_minutes?: number | null         // total time the assignee logged at close-out, in minutes
   verified_at?: string | null
   return_reason?: string | null        // reason attached to the most recent send-back
   created_at: string
