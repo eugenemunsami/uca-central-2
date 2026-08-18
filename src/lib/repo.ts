@@ -1485,15 +1485,16 @@ export const repo = {
   // Anyone internal raises a task and assigns it to a colleague. Notifies the assignee (unless self).
   async addTask(input: {
     title: string; detail?: string | null; assignee_id: string; requester_id: string;
-    priority?: TaskPriority; due_date?: string | null; subtasks?: string[]
+    priority?: TaskPriority; category?: string | null; due_date?: string | null; subtasks?: string[]
   }) {
     const priority: TaskPriority = input.priority ?? 'medium'
+    const category = input.category?.trim() || null
     const subs = (input.subtasks ?? []).map(s => s.trim()).filter(Boolean)
     if (LIVE) {
       const rows = await sb<{ id: string }[]>(() => supabase!.from('internal_tasks').insert({
         title: input.title.trim(), detail: input.detail?.trim() || null,
         assignee_id: input.assignee_id, requester_id: input.requester_id,
-        priority, status: 'open', due_date: input.due_date || null,
+        priority, status: 'open', category, due_date: input.due_date || null,
       }).select('id') as never)
       const tid = rows[0]?.id
       if (tid) {
@@ -1509,8 +1510,9 @@ export const repo = {
     db.internalTasks.unshift({
       id, title: input.title.trim(), detail: input.detail?.trim() || null,
       requester_id: input.requester_id, assignee_id: input.assignee_id,
-      priority, status: 'open', due_date: input.due_date || null,
-      submitted_at: null, verified_at: null, return_reason: null, created_at: t, updated_at: t,
+      priority, status: 'open', category, due_date: input.due_date || null,
+      submitted_at: null, time_minutes: null, verified_at: null, return_reason: null,
+      created_at: t, updated_at: t,
     })
     subs.forEach((title, i) => db.internalTaskSubtasks.push({ id: uid(), task_id: id, title, done: false, sort_order: i, created_at: t }))
     if (input.assignee_id !== input.requester_id) notify([input.assignee_id], 'task_assigned', `New task assigned to you: ${input.title.trim()}.`, '')
@@ -1532,13 +1534,18 @@ export const repo = {
 
   // Assignee marks the work done -> awaits the requester's verification. A self-assigned task
   // (requester == assignee) has no separate verifier, so it completes immediately.
-  async submitTask(id: string) {
+  // `minutes` is the total time the assignee spent (captured in the close-out panel — the UI won't
+  // let them submit without it). On a re-submit after a send-back this OVERWRITES the previous
+  // figure rather than adding to it: one task, one running total.
+  async submitTask(id: string, minutes?: number | null) {
     const t = await repo._taskRow(id)
     if (!t) return
     const selfTask = t.requester_id === t.assignee_id
+    // Never wipe a previously logged figure if this call somehow arrives without one.
+    const time_minutes = minutes != null && minutes > 0 ? Math.round(minutes) : (t.time_minutes ?? null)
     await repo.updateTask(id, selfTask
-      ? { status: 'done', submitted_at: new Date().toISOString(), verified_at: new Date().toISOString() }
-      : { status: 'submitted', submitted_at: new Date().toISOString() })
+      ? { status: 'done', submitted_at: new Date().toISOString(), verified_at: new Date().toISOString(), time_minutes }
+      : { status: 'submitted', submitted_at: new Date().toISOString(), time_minutes })
     if (selfTask) return
     if (LIVE) { try { await supabase!.rpc('app_notify', { recipient_ids: [t.requester_id], p_kind: 'task_submitted', p_text: `Task ready to verify: ${t.title}.`, p_action_owner: t.requester_id }) } catch { /* best-effort */ } }
     else notify([t.requester_id], 'task_submitted', `Task ready to verify: ${t.title}.`, '')
