@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { CheckCircle2, Circle, Plus, Trash2, CornerUpLeft, Send, MessageSquare } from 'lucide-react'
+import { CheckCircle2, Circle, Plus, Trash2, CornerUpLeft, Send, MessageSquare, Clock, Tag } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { repo } from '../lib/repo'
-import { TASK_STATUS_LABEL, TASK_PRIORITY_LABEL, type TaskStatus, type TaskPriority } from '../lib/types'
+import { TASK_STATUS_LABEL, TASK_PRIORITY_LABEL, fmtMinutes, type TaskStatus, type TaskPriority } from '../lib/types'
 import { Modal, Empty, fmtDate } from './ui'
 
 const STATUS_CLS: Record<TaskStatus, string> = {
@@ -31,7 +31,28 @@ export default function InternalTaskDetail({ taskId, onClose }: { taskId: string
   const [comment, setComment] = useState('')
   const [newSub, setNewSub] = useState('')
 
+  // Close-out: "Mark done" opens a panel asking how long the task took before it can be submitted.
+  // On a re-submit after a send-back the boxes pre-fill with whatever was logged last time, so the
+  // assignee adjusts it to the new running total rather than starting from scratch.
+  const [closing, setClosing] = useState(false)
+  const [hrs, setHrs] = useState('')
+  const [mins, setMins] = useState('')
+
   if (!task) return null
+
+  const openCloseOut = () => {
+    const prev = task.time_minutes ?? 0
+    setHrs(prev ? String(Math.floor(prev / 60)) : '')
+    setMins(prev % 60 ? String(prev % 60) : '')
+    setClosing(true)
+  }
+  const cancelCloseOut = () => { setClosing(false); setHrs(''); setMins('') }
+  // Blank counts as zero; anything non-numeric or negative counts as zero too, so the button
+  // simply stays disabled rather than writing rubbish.
+  const num = (v: string) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0 }
+  const totalMinutes = num(hrs) * 60 + num(mins)
+  const minsInvalid = num(mins) > 59
+  const canSubmitCloseOut = totalMinutes > 0 && !minsInvalid
 
   const nameOf = (id?: string | null) => people.find(p => p.id === id)?.full_name ?? '—'
   const isRequester = user?.id === task.requester_id
@@ -48,7 +69,17 @@ export default function InternalTaskDetail({ taskId, onClose }: { taskId: string
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-2.5 py-1 text-[11px] ${STATUS_CLS[task.status]}`}>{TASK_STATUS_LABEL[task.status]}</span>
           <span className={`rounded-full px-2.5 py-1 text-[11px] ${PRIORITY_CLS[task.priority]}`}>{TASK_PRIORITY_LABEL[task.priority]} priority</span>
+          {task.category && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] text-white/70">
+              <Tag size={11} /> {task.category}
+            </span>
+          )}
           {task.due_date && <span className="rounded-full bg-ink-700 px-2.5 py-1 text-[11px] text-white/50">Due {fmtDate(task.due_date)}</span>}
+          {fmtMinutes(task.time_minutes) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-jade/15 px-2.5 py-1 text-[11px] text-jade">
+              <Clock size={11} /> {fmtMinutes(task.time_minutes)} logged
+            </span>
+          )}
         </div>
 
         <div className="grid gap-3 text-[13px] sm:grid-cols-2">
@@ -129,16 +160,21 @@ export default function InternalTaskDetail({ taskId, onClose }: { taskId: string
 
         {/* Actions */}
         <div className="flex flex-wrap items-center gap-2 border-t border-ink-600 pt-4">
-          {isAssignee && task.status === 'open' && (
+          {isAssignee && task.status === 'open' && !closing && (
             <button className="btn-ghost" disabled={busy} onClick={() => run(() => repo.startTask(task.id))}>Start work</button>
           )}
-          {isAssignee && (task.status === 'open' || task.status === 'in_progress') && (
-            <button className="btn-primary" disabled={busy} onClick={() => run(() => repo.submitTask(task.id))}>
+          {isAssignee && (task.status === 'open' || task.status === 'in_progress') && !closing && (
+            <button className="btn-primary" disabled={busy} onClick={openCloseOut}>
               <Send size={15} /> Mark done
             </button>
           )}
           {isRequester && task.status === 'submitted' && !returning && (
             <>
+              {fmtMinutes(task.time_minutes) && (
+                <span className="text-[12px] text-white/50">
+                  {nameOf(task.assignee_id)} logged <span className="text-jade">{fmtMinutes(task.time_minutes)}</span>.
+                </span>
+              )}
               <button className="btn-primary" disabled={busy} onClick={() => run(() => repo.verifyTask(task.id))}>
                 <CheckCircle2 size={15} /> Verify &amp; complete
               </button>
@@ -149,7 +185,10 @@ export default function InternalTaskDetail({ taskId, onClose }: { taskId: string
             <span className="text-[12px] text-white/40">Awaiting {nameOf(task.requester_id)}'s verification.</span>
           )}
           {task.status === 'done' && (
-            <span className="text-[12px] text-jade">Completed{task.verified_at ? ` · verified ${fmtDate(task.verified_at)}` : ''}.</span>
+            <span className="text-[12px] text-jade">
+              Completed{task.verified_at ? ` · verified ${fmtDate(task.verified_at)}` : ''}
+              {fmtMinutes(task.time_minutes) ? ` · ${fmtMinutes(task.time_minutes)} logged` : ''}.
+            </span>
           )}
           {canManage && (
             <button className="ml-auto text-[12px] text-white/25 hover:text-flame" disabled={busy}
@@ -158,6 +197,44 @@ export default function InternalTaskDetail({ taskId, onClose }: { taskId: string
             </button>
           )}
         </div>
+
+        {/* Close-out: time taken is required before the task can be submitted. */}
+        {closing && (
+          <div className="rounded-lg border border-lime/40 bg-lime/5 p-3">
+            <div className="flex items-center gap-2 text-[13px] text-white">
+              <Clock size={15} className="text-lime" />
+              How long did this take you?
+            </div>
+            <p className="mt-1 text-[12px] text-white/40">
+              {task.time_minutes
+                ? 'Adjust this to the total time on the task, including the work you have just redone.'
+                : 'Required to close the task out. Your best estimate of total time spent is fine.'}
+            </p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <label className="text-[12px] text-white/50">
+                Hours
+                <input className="input mt-1 w-20" type="number" min={0} max={99} inputMode="numeric"
+                  value={hrs} onChange={e => setHrs(e.target.value)} placeholder="0" />
+              </label>
+              <label className="text-[12px] text-white/50">
+                Minutes
+                <input className="input mt-1 w-20" type="number" min={0} max={59} inputMode="numeric"
+                  value={mins} onChange={e => setMins(e.target.value)} placeholder="0" />
+              </label>
+              {totalMinutes > 0 && !minsInvalid && (
+                <span className="pb-2 text-[12px] text-jade">= {fmtMinutes(totalMinutes)}</span>
+              )}
+              {minsInvalid && <span className="pb-2 text-[12px] text-flame">Minutes must be under 60 — use the hours box.</span>}
+            </div>
+            <div className="mt-3 flex justify-end gap-2">
+              <button className="btn-ghost" onClick={cancelCloseOut}>Cancel</button>
+              <button className="btn-primary" disabled={!canSubmitCloseOut || busy}
+                onClick={() => run(async () => { await repo.submitTask(task.id, totalMinutes); cancelCloseOut() })}>
+                <Send size={15} /> {isRequester ? 'Log time & complete' : 'Log time & submit'}
+              </button>
+            </div>
+          </div>
+        )}
 
         {returning && (
           <div className="rounded-lg border border-ink-600 bg-ink-900/50 p-3">
