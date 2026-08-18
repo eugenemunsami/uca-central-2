@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ClipboardList, Plus, MessageSquare, ListChecks, Inbox, Send } from 'lucide-react'
+import { ClipboardList, Plus, MessageSquare, ListChecks, Inbox, Send, Clock, Tag } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { repo } from '../lib/repo'
 import {
   TASK_STATUS_LABEL, TASK_PRIORITY_LABEL, TASK_PRIORITIES, TASK_ACTIVE_STATUSES,
+  taskCategoryOptions, fmtMinutes,
   type InternalTaskView, type TaskStatus, type TaskPriority,
 } from '../lib/types'
 import { Modal, Field, Empty, fmtDate } from '../components/ui'
@@ -40,8 +41,16 @@ export function TaskCard({ task, nameOf, onOpen, delay = 0 }: {
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/40">
         <span className={`rounded-full px-1.5 py-0.5 ${PRIORITY_CLS[task.priority]}`}>{TASK_PRIORITY_LABEL[task.priority]}</span>
+        {task.category && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-1.5 py-0.5 text-white/60">
+            <Tag size={10} /> {task.category}
+          </span>
+        )}
         <span>{nameOf(task.requester_id)} → {nameOf(task.assignee_id)}</span>
         {task.due_date && <span>· Due {fmtDate(task.due_date)}</span>}
+        {fmtMinutes(task.time_minutes) && (
+          <span className="inline-flex items-center gap-1 text-jade"><Clock size={11} /> {fmtMinutes(task.time_minutes)}</span>
+        )}
         {task.subtasks.length > 0 && <span className="inline-flex items-center gap-1"><ListChecks size={12} /> {doneSubs}/{task.subtasks.length}</span>}
         {task.comments.length > 0 && <span className="inline-flex items-center gap-1"><MessageSquare size={12} /> {task.comments.length}</span>}
       </div>
@@ -55,6 +64,7 @@ export default function InternalTasks() {
   const [creating, setCreating] = useState(false)
   const [viewId, setViewId] = useState<string | null>(null)
   const [assigneeFilter, setAssigneeFilter] = useState('all')
+  const [categoryFilter, setCategoryFilter] = useState('all')
   const [q, setQ] = useState('')
 
   const nameOf = (id?: string | null) => people.find(p => p.id === id)?.full_name ?? '—'
@@ -66,11 +76,22 @@ export default function InternalTasks() {
     () => tasks.filter(t => isExco || t.requester_id === user?.id || t.assignee_id === user?.id),
     [tasks, isExco, user?.id])
 
+  // Work-streams actually in use on the tasks this person can see — drives the "Related to" filter.
+  const usedCategories = useMemo(() => {
+    const seen = new Map<string, string>()
+    for (const t of mine) {
+      const s = (t.category ?? '').trim()
+      if (s && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s)
+    }
+    return [...seen.values()].sort((a, z) => a.localeCompare(z))
+  }, [mine])
+
   const visible = useMemo(() => mine.filter(t => {
     if (assigneeFilter !== 'all' && t.assignee_id !== assigneeFilter) return false
+    if (categoryFilter !== 'all' && (t.category ?? '').trim().toLowerCase() !== categoryFilter.toLowerCase()) return false
     if (q.trim() && !t.title.toLowerCase().includes(q.trim().toLowerCase())) return false
     return true
-  }), [mine, assigneeFilter, q])
+  }), [mine, assigneeFilter, categoryFilter, q])
 
   const active = useMemo(
     () => visible.filter(t => TASK_ACTIVE_STATUSES.includes(t.status))
@@ -99,6 +120,12 @@ export default function InternalTasks() {
           <option value="all">Everyone</option>
           {internalPeople.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
         </select>
+        {usedCategories.length > 0 && (
+          <select className="input w-auto" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+            <option value="all">All work-streams</option>
+            {usedCategories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </div>
 
       <section className="space-y-3">
@@ -142,7 +169,7 @@ export default function InternalTasks() {
 }
 
 function CreateTaskModal({ onClose }: { onClose: () => void }) {
-  const { people } = useData()
+  const { people, tasks } = useData()
   const { user } = useAuth()
   const internalPeople = people.filter(p => p.role !== 'external' && p.active !== false)
 
@@ -150,17 +177,23 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
   const [detail, setDetail] = useState('')
   const [assignee, setAssignee] = useState('')
   const [priority, setPriority] = useState<TaskPriority>('medium')
+  const [category, setCategory] = useState('')
   const [due, setDue] = useState('')
   const [subs, setSubs] = useState('')
   const [busy, setBusy] = useState(false)
 
+  // Free text, but suggested: the seed work-streams merged with everything already in use, so the
+  // team converges on consistent labels without ever being blocked from typing a new one.
+  const categoryOptions = useMemo(() => taskCategoryOptions(tasks.map(t => t.category)), [tasks])
+  const ready = Boolean(title.trim() && assignee && category.trim())
+
   const save = async () => {
-    if (!title.trim() || !assignee || !user) return
+    if (!ready || !user) return
     setBusy(true)
     try {
       await repo.addTask({
         title: title.trim(), detail: detail.trim() || null, assignee_id: assignee, requester_id: user.id,
-        priority, due_date: due || null,
+        priority, category: category.trim(), due_date: due || null,
         subtasks: subs.split('\n').map(s => s.trim()).filter(Boolean),
       })
       onClose()
@@ -188,15 +221,24 @@ function CreateTaskModal({ onClose }: { onClose: () => void }) {
           </select>
         </Field>
       </div>
-      <Field label="Due date">
-        <input className="input" type="date" value={due} onChange={e => setDue(e.target.value)} />
-      </Field>
+      <div className="grid gap-x-4 sm:grid-cols-2">
+        <Field label="Related to (required)" hint="The work-stream this belongs to, so the person receiving it knows the context. Pick a suggestion or type your own.">
+          <input className="input" list="task-category-options" value={category}
+            onChange={e => setCategory(e.target.value)} placeholder="e.g. Hearts Day" />
+          <datalist id="task-category-options">
+            {categoryOptions.map(c => <option key={c} value={c} />)}
+          </datalist>
+        </Field>
+        <Field label="Due date">
+          <input className="input" type="date" value={due} onChange={e => setDue(e.target.value)} />
+        </Field>
+      </div>
       <Field label="Sub-tasks (optional — one per line)" hint="A checklist of steps within this task.">
         <textarea className="input min-h-[70px]" value={subs} onChange={e => setSubs(e.target.value)} placeholder={'Export from Teams\nDe-dupe and format'} />
       </Field>
       <div className="mt-2 flex justify-end gap-2">
         <button className="btn-ghost" onClick={onClose}>Cancel</button>
-        <button className="btn-primary" disabled={!title.trim() || !assignee || busy} onClick={save}>Assign task</button>
+        <button className="btn-primary" disabled={!ready || busy} onClick={save}>Assign task</button>
       </div>
     </Modal>
   )
