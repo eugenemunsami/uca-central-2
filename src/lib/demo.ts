@@ -53,9 +53,9 @@ export const userEvents: UserEvent[] = [
 
 // Internal tasks (staff-to-staff jobs) — demo seed.
 export const internalTasks: InternalTask[] = [
-  { id: 'it-1', title: 'Pull Q1 event attendee spreadsheet', detail: 'Full list of everyone who attended the BEE123 welcome parties this quarter, with contact details.', requester_id: 'u-eugene', assignee_id: 'u-keanan', priority: 'medium', status: 'in_progress', due_date: day(2), submitted_at: null, verified_at: null, return_reason: null, created_at: iso(1), updated_at: iso(1) },
-  { id: 'it-2', title: 'Update the consultant leave tracker', detail: 'Reconcile March leave against the shared tracker.', requester_id: 'u-rinaldo', assignee_id: 'u-schuyler', priority: 'low', status: 'submitted', due_date: day(-1), submitted_at: iso(0), verified_at: null, return_reason: null, created_at: iso(3), updated_at: iso(0) },
-  { id: 'it-3', title: 'Design the Q2 huddle deck cover', requester_id: 'u-shaun', assignee_id: 'u-katlego', priority: 'high', status: 'open', due_date: day(4), submitted_at: null, verified_at: null, return_reason: null, created_at: iso(0), updated_at: iso(0) },
+  { id: 'it-1', title: 'Pull Q1 event attendee spreadsheet', detail: 'Full list of everyone who attended the BEE123 welcome parties this quarter, with contact details.', requester_id: 'u-eugene', assignee_id: 'u-keanan', priority: 'medium', status: 'in_progress', category: 'Hearts Day', due_date: day(2), submitted_at: null, time_minutes: null, verified_at: null, return_reason: null, created_at: iso(1), updated_at: iso(1) },
+  { id: 'it-2', title: 'Update the consultant leave tracker', detail: 'Reconcile March leave against the shared tracker.', requester_id: 'u-rinaldo', assignee_id: 'u-schuyler', priority: 'low', status: 'submitted', category: 'Admin', due_date: day(-1), submitted_at: iso(0), time_minutes: 90, verified_at: null, return_reason: null, created_at: iso(3), updated_at: iso(0) },
+  { id: 'it-3', title: 'Design the Q2 huddle deck cover', requester_id: 'u-shaun', assignee_id: 'u-katlego', priority: 'high', status: 'open', category: 'Events', due_date: day(4), submitted_at: null, time_minutes: null, verified_at: null, return_reason: null, created_at: iso(0), updated_at: iso(0) },
 ]
 export const internalTaskSubtasks: InternalTaskSubtask[] = [
   { id: 'st-1', task_id: 'it-1', title: 'Export from MS Teams', done: true, sort_order: 0, created_at: iso(1) },

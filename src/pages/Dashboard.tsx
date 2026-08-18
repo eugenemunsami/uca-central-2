@@ -5,14 +5,14 @@ import {
   Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts'
 import {
-  AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users, Rocket, CheckCircle2, Ban, CalendarDays, ListChecks,
+  AlertTriangle, ArrowUpRight, PauseCircle, TrendingUp, Users, Rocket, CheckCircle2, Ban, CalendarDays, ListChecks, Clock,
 } from 'lucide-react'
 import { useData } from '../lib/useData'
 import { useAuth } from '../context/AuthContext'
 import { RAG_HEX } from '../lib/rag'
 import {
   FUNNEL_STAGES, STAGE_LABEL, ONB_ACTIVE_ORDER, ONB_STATUS_LABEL, ONB_STATUS_OWNER, ONB_OWNER_LABEL,
-  TASK_ACTIVE_STATUSES, TASK_STATUS_LABEL,
+  TASK_ACTIVE_STATUSES, TASK_STATUS_LABEL, fmtMinutes,
   type Rag, type OnbOwnerRole, type OnboardingView, type WelcomeParty, type WelcomePartyInvite,
   type InternalTaskView, type TaskStatus, type Profile,
 } from '../lib/types'
@@ -470,18 +470,42 @@ function TaskWorkloadSummary({ tasks, people }: {
   const active = tasks.filter(t => TASK_ACTIVE_STATUSES.includes(t.status))
   const openCount = tasks.filter(t => t.status === 'open').length
   const awaiting = tasks.filter(t => t.status === 'submitted').length
+  // Time is logged by the assignee at close-out, so it only exists on submitted/done tasks.
+  const loggedTotal = tasks.reduce((n, t) => n + (t.time_minutes ?? 0), 0)
+  const loggedCount = tasks.filter(t => (t.time_minutes ?? 0) > 0).length
 
-  // Active-task workload per internal person, by who executes the work (assignee).
+  // Active-task workload per internal person, by who executes the work (assignee). `minutes` is
+  // everything they have ever logged, so a light active load next to a heavy time total reads as
+  // "they have been busy", not "they are free".
   const internal = people.filter(p => p.role !== 'external')
   const byAssignee = internal
-    .map(p => ({
-      id: p.id,
-      name: p.full_name,
-      count: tasks.filter(t => t.assignee_id === p.id && TASK_ACTIVE_STATUSES.includes(t.status)).length,
-    }))
-    .filter(d => d.count > 0)
-    .sort((a, b) => b.count - a.count)
+    .map(p => {
+      const theirs = tasks.filter(t => t.assignee_id === p.id)
+      return {
+        id: p.id,
+        name: p.full_name,
+        count: theirs.filter(t => TASK_ACTIVE_STATUSES.includes(t.status)).length,
+        minutes: theirs.reduce((n, t) => n + (t.time_minutes ?? 0), 0),
+      }
+    })
+    .filter(d => d.count > 0 || d.minutes > 0)
+    .sort((a, b) => b.count - a.count || b.minutes - a.minutes)
   const maxAssignee = Math.max(1, ...byAssignee.map(d => d.count))
+
+  // Time logged per work-stream — what the team's invisible hours are actually going into.
+  const byCategory = (() => {
+    const acc = new Map<string, { name: string; minutes: number; count: number }>()
+    for (const t of tasks) {
+      const m = t.time_minutes ?? 0
+      if (m <= 0) continue
+      const name = (t.category ?? '').trim() || 'Uncategorised'
+      const k = name.toLowerCase()
+      const cur = acc.get(k) ?? { name, minutes: 0, count: 0 }
+      acc.set(k, { name: cur.name, minutes: cur.minutes + m, count: cur.count + 1 })
+    }
+    return [...acc.values()].sort((a, b) => b.minutes - a.minutes)
+  })()
+  const maxCategory = Math.max(1, ...byCategory.map(d => d.minutes))
 
   const drill = [...active].sort((a, b) =>
     (TASK_STATUS_ORDER[a.status] - TASK_STATUS_ORDER[b.status])
@@ -491,13 +515,15 @@ function TaskWorkloadSummary({ tasks, people }: {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Active tasks" value={active.length} icon={<ListChecks size={20} />}
           sub={`${tasks.length} tasks in total`} delay={0} />
         <StatCard label="Open tasks" value={openCount} accent="#9FD150" icon={<CheckCircle2 size={20} />}
           sub="not yet started or in progress" delay={0.05} />
         <StatCard label="Awaiting verification" value={awaiting} accent={RAG_HEX.amber} icon={<AlertTriangle size={20} />}
           sub="submitted, pending sign-off" delay={0.1} />
+        <StatCard label="Time logged" value={fmtMinutes(loggedTotal) ?? '—'} accent="#19A06E" icon={<Clock size={20} />}
+          sub={loggedCount ? `across ${loggedCount} closed-out task${loggedCount === 1 ? '' : 's'}` : 'nothing closed out yet'} delay={0.15} />
       </div>
 
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
@@ -509,7 +535,10 @@ function TaskWorkloadSummary({ tasks, people }: {
               <div key={d.id}>
                 <div className="mb-1 flex justify-between text-xs">
                   <span className="text-white/60">{d.name}</span>
-                  <span className="text-white/40">{d.count}</span>
+                  <span className="flex items-center gap-2 text-white/40">
+                    {fmtMinutes(d.minutes) && <span className="text-jade">{fmtMinutes(d.minutes)} logged</span>}
+                    <span>{d.count} active</span>
+                  </span>
                 </div>
                 <div className="h-2 rounded-full bg-ink-700">
                   <div className="h-2 rounded-full" style={{ width: `${(d.count / maxAssignee) * 100}%`, background: '#9FD150' }} />
@@ -520,6 +549,28 @@ function TaskWorkloadSummary({ tasks, people }: {
         )}
       </motion.div>
 
+      {byCategory.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}
+          className="card p-5">
+          <div className="label mb-3">Time logged per work-stream</div>
+          <div className="space-y-3">
+            {byCategory.map(d => (
+              <div key={d.name}>
+                <div className="mb-1 flex justify-between text-xs">
+                  <span className="text-white/60">{d.name}</span>
+                  <span className="text-white/40">
+                    <span className="text-jade">{fmtMinutes(d.minutes)}</span> · {d.count} task{d.count === 1 ? '' : 's'}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-ink-700">
+                  <div className="h-2 rounded-full" style={{ width: `${(d.minutes / maxCategory) * 100}%`, background: '#19A06E' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
         className="card p-5">
         <div className="label mb-3">Active tasks</div>
@@ -529,9 +580,13 @@ function TaskWorkloadSummary({ tasks, people }: {
               <div key={t.id} className="flex items-center justify-between gap-3 rounded-lg bg-ink-800 px-3 py-2.5">
                 <div className="min-w-0">
                   <div className="truncate text-sm text-white">{t.title}</div>
-                  <div className="text-[11px] text-white/40">{nameOf(t.assignee_id)} → {nameOf(t.requester_id)}</div>
+                  <div className="text-[11px] text-white/40">
+                    {nameOf(t.assignee_id)} → {nameOf(t.requester_id)}
+                    {t.category && <span className="text-white/30"> · {t.category}</span>}
+                  </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-3 text-[11px] text-white/40">
+                  {fmtMinutes(t.time_minutes) && <span className="text-jade">{fmtMinutes(t.time_minutes)}</span>}
                   <span className="text-white/60">{TASK_STATUS_LABEL[t.status]}</span>
                   <span>{t.due_date ? fmtDate(t.due_date) : 'No due date'}</span>
                 </div>
