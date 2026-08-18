@@ -28,7 +28,7 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 - **Hosting:** Netlify site **`ucacentral`** (site id `a6a94f9d-e305-410d-954f-688f3ef12911`),
   URL **https://ucacentral.netlify.app**. Auto-builds from `main`. Build: `tsc -b --noCheck && vite build`.
   No service worker (only a PWA `manifest.webmanifest`), so no aggressive caching — a hard refresh gets latest.
-- **Backend:** Supabase project **"UCA Central"**, ref **`xdsssfkkfytxjwnijkqm`** (eu-central-1, Postgres 17).
+- **Backend:** Supabase project "UCA Central", ref **`xdsssfkkfytxjwnijkqm`** (eu-central-1, Postgres 17).
   RLS enabled everywhere. `pgcrypto` lives in the **`extensions`** schema (use `extensions.crypt` / `extensions.gen_salt`).
 - **DEMO vs LIVE:** `LIVE = Boolean(VITE_SUPABASE_URL && VITE_SUPABASE_ANON_KEY)`. repo.ts has an in-memory
   `db` for demo; production runs LIVE against Supabase. Every repo method must handle both branches.
@@ -94,7 +94,8 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 `0018` app_notify_onb_sponsor (notify the Aggregator/Sponsor account(s) when an onboarding ticket is escalated to them) ·
 `0019` archive_2025_jobs (TEMPORARY, fully isolated "2025 Archive" table — see §13) ·
 `0020` external updates+comms read (relax `p_wu_read`/`p_cm_read` to `is_internal() or my_sponsors()`-scoped, so aggregator accounts get full progress + evidence-trail visibility on their own beneficiaries — see §15) ·
-`0021` internal tasks (self-contained staff-to-staff module: `internal_tasks` + `internal_task_subtasks` + `internal_task_comments`; own+raised RLS with Exco-sees-all; added to realtime — see §16).
+`0021` internal tasks (self-contained staff-to-staff module: `internal_tasks` + `internal_task_subtasks` + `internal_task_comments`; own+raised RLS with Exco-sees-all; added to realtime — see §16) ·
+`0022` task time + category (`internal_tasks.time_minutes` logged by the assignee at close-out, `internal_tasks.category` = the free-text work-stream the task relates to; both nullable, required in the UI only — see §16).
 
 ## 6. Key files
 
@@ -179,7 +180,7 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Onboarding escalation note:** the generic **Escalate to Aggregator/Sponsor** button (repo `onbRaiseToSponsor` → status `esc_sponsor`, remembers `esc_return_status`) is available to ALL internal staff who own a ticket — exco, manco AND **consultants** — at any non-esc stage (this was briefly manco/exco-only during the aggregator build; restored via `staff = role!=='external'` in OnboardingDetail). External (sponsor) users don't see it (can't escalate to themselves). On reaching `esc_sponsor`, `_onbApply` now also calls `app_notify_onb_sponsor` so the sponsor ACCOUNT(s) get an action-required notification (they have no user id in `participants`).
 
-**Migrations now through 0021.**
+**Migrations now through 0022.**
 
 ## 13. 2025 Archive (TEMPORARY — removable, fully isolated)
 
@@ -236,5 +237,14 @@ Ad-hoc internal jobs UCA staff assign to each other (e.g. "pull me the event att
 - **Data layer:** `db.internalTasks/Subtasks/Comments` + demo seed in `demo.ts`; `REALTIME_TABLES` extended; repo methods `tasks()` (nests subtasks+comments), `addTask`, `updateTask`, `startTask`, `submitTask`, `verifyTask`, `returnTask`, `deleteTask`, `addSubtask`, `toggleSubtask`, `deleteSubtask`, `addTaskComment`, `_taskRow` — mirror the close-out chain (demo `ping()`, live relies on realtime; notifications via existing `app_notify`). **Self-assigned tasks auto-complete on submit** (no separate verifier). `useData()` exposes `tasks: InternalTaskView[]`. New `NotificationKind`s: `task_assigned|task_comment|task_submitted|task_returned|task_verified` (notifications.kind is free text — no enum change needed).
 - **Types:** `TaskStatus`, `TaskPriority`, `TASK_STATUS_LABEL`, `TASK_PRIORITY_LABEL`, `TASK_PRIORITIES` (high→low), `TASK_ACTIVE_STATUSES`, `InternalTask/Subtask/Comment/View`; `TOGGLEABLE_SECTIONS` gains `tasks`.
 - **Frontend:** nav entry **Internal Tasks** (`/tasks`, internal-only, admin-toggleable) in `Layout.tsx` + route in `App.tsx` (internal block only). New `src/pages/InternalTasks.tsx` (create modal, filters, Active list, Completed split Requested/Executed; exports a shared `TaskCard`). New `src/components/InternalTaskDetail.tsx` (shared modal: sub-tasks, comments, and status-driven actions — start/mark-done for the assignee, verify/send-back for the requester). `MyWork.tsx` gains an **Internal tasks** section ("Needs your verification" + "Assigned to me"). `Dashboard.tsx` gains an **Exco-only** third view "Internal tasks" (workload-per-person meter + active drill list; gated `user?.role==='exco'`, non-exco falls back to delivery). Removable cleanly (drop the 3 tables + the page/component/nav/route + the `tasks` wiring).
+
+### 16.1 Round 2 — time taken + "Related to" (migration `0022`, shipped)
+
+Requested by **Hiten**: (a) the assigned consultant must state the time taken when closing a task out, and (b) the requester must say what the task **relates to** when raising it, so the receiver has clear direction. Decisions locked with the user: time is captured at **Mark done** (the assignee's close-out moment), entered as **hours + minutes** and stored as **integer minutes**; "Related to" is **free text with suggestions** (not a dropdown, not a lookup table — it must accept a work-stream Central has no concept of) and is **mandatory**; **no** link to a beneficiary or any other record (the module stays self-contained, no FKs out). Rollback point: branch **`checkpoint-pre-task-timelog-category`** (at commit `c603b79`, the state just before this round).
+
+- **DB (`0022`):** `internal_tasks.time_minutes integer` + `internal_tasks.category text`, both **nullable with no default** so the migration stays additive & inert per §9 — "mandatory" is enforced in the UI, never by a NOT NULL that would break an un-updated close-out path. Check constraint `time_minutes is null or time_minutes > 0`; index on `category`. No RLS/grant/realtime changes needed (the 0021 table policies already cover new columns and the table is already published).
+- **Types:** `InternalTask` gains `category?: string | null` and `time_minutes?: number | null`; new `TASK_CATEGORY_SUGGESTIONS` (Beneficiaries, Onboarding, Admin, Hearts Day, Escalations, Sponsors, Events, Finance, Reporting, Systems), `taskCategoryOptions(used)` (merges the seeds with values already in use, deduped case-insensitively — first spelling wins) and `fmtMinutes(mins)` (`90 → "1h 30m"`, null when nothing logged so callers can hide the field).
+- **Data layer:** `addTask` takes `category`; **`submitTask(id, minutes)`** writes `time_minutes`. On a **re-submit after a send-back the figure is OVERWRITTEN**, not accumulated — one task, one running total — and a call arriving without minutes never wipes an existing value.
+- **Frontend:** "Mark done" no longer submits directly — it opens a **close-out panel** (same shape as the existing Send-back panel) with Hours/Minutes boxes, a live `= 1h 30m` readout, a "minutes must be under 60" guard, pre-filled from the previous log on a resubmit, and a submit button disabled until the total is > 0. Applies to self-assigned tasks too (they auto-complete, so it's the last chance to capture it). Time shows on the `TaskCard`, in the detail chip row, next to the requester's Verify button ("X logged"), and on the completed line. The New-task modal gains a required **Related to** input (`<datalist>`-backed, sits beside Due date); the Assign button is gated on it. The Internal Tasks page gains a **work-stream filter** built from values in use. The Exco dashboard's tasks view gains a **Time logged** stat card, per-person logged totals on the workload meter, and a **Time logged per work-stream** breakdown (tasks with no category roll up as "Uncategorised").
 
 **Migration-history drift note:** the live DB also has `evt_*` (event/task board behind The Huddle — `evt_events`, `evt_tasks`, `evt_task_owners`, `evt_people`) and `office_*` tables that are **NOT** represented in `/supabase/migrations` (they were created directly). They back `Huddle.tsx`. Leave them alone when adding migrations; the Internal Tasks module is unrelated to `evt_tasks`.
