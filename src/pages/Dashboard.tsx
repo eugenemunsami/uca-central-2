@@ -34,9 +34,9 @@ export default function Dashboard() {
   const [tab, setTab] = useState('all')
   const [rag, setRag] = useState<'all' | Rag>('all')
   const [view, setView] = useState<'delivery' | 'onboarding' | 'tasks'>('delivery')
-  const isExco = user?.role === 'exco'
-  // Non-exco users must never land on the exco-only tasks view.
-  const effectiveView = view === 'tasks' && !isExco ? 'delivery' : view
+  // Internal task workload is a management planning view — visible to ManCo and Exco.
+  const canSeeTasks = user?.role === 'exco' || user?.role === 'manco'
+  const effectiveView = view === 'tasks' && !canSeeTasks ? 'delivery' : view
 
   // One tab per distinct sponsor/aggregator (grouped by client_name), with counts.
   const clientTabs = useMemo(() => {
@@ -111,7 +111,7 @@ export default function Dashboard() {
               className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${view === 'onboarding' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
               <Rocket size={14} /> Onboarding
             </button>
-            {isExco && (
+            {canSeeTasks && (
               <button onClick={() => setView('tasks')}
                 className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm transition-colors ${view === 'tasks' ? 'bg-lime text-ink-900' : 'text-white/50 hover:text-white'}`}>
                 <ListChecks size={14} /> Internal tasks

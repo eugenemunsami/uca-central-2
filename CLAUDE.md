@@ -95,7 +95,8 @@ delivery of interventions, escalations, and close-out/reporting — across **agg
 `0019` archive_2025_jobs (TEMPORARY, fully isolated "2025 Archive" table — see §13) ·
 `0020` external updates+comms read (relax `p_wu_read`/`p_cm_read` to `is_internal() or my_sponsors()`-scoped, so aggregator accounts get full progress + evidence-trail visibility on their own beneficiaries — see §15) ·
 `0021` internal tasks (self-contained staff-to-staff module: `internal_tasks` + `internal_task_subtasks` + `internal_task_comments`; own+raised RLS with Exco-sees-all; added to realtime — see §16) ·
-`0022` task time + category (`internal_tasks.time_minutes` logged by the assignee at close-out, `internal_tasks.category` = the free-text work-stream the task relates to; both nullable, required in the UI only — see §16).
+`0022` task time + category (`internal_tasks.time_minutes` logged by the assignee at close-out, `internal_tasks.category` = the free-text work-stream the task relates to; both nullable, required in the UI only — see §16) ·
+`0023` manco reads all tasks (relax `p_it_read` to `my_role() in ('exco','manco')` so the Dashboard "Internal tasks" workload view is org-wide for ManCo, not just Exco — write access unchanged — see §16.2).
 
 ## 6. Key files
 
@@ -180,7 +181,7 @@ Source: `Central Update 1.pdf`. Triaged into Batch A (quick UI), Batch B (medium
 
 **Onboarding escalation note:** the generic **Escalate to Aggregator/Sponsor** button (repo `onbRaiseToSponsor` → status `esc_sponsor`, remembers `esc_return_status`) is available to ALL internal staff who own a ticket — exco, manco AND **consultants** — at any non-esc stage (this was briefly manco/exco-only during the aggregator build; restored via `staff = role!=='external'` in OnboardingDetail). External (sponsor) users don't see it (can't escalate to themselves). On reaching `esc_sponsor`, `_onbApply` now also calls `app_notify_onb_sponsor` so the sponsor ACCOUNT(s) get an action-required notification (they have no user id in `participants`).
 
-**Migrations now through 0022.**
+**Migrations now through 0023.**
 
 ## 13. 2025 Archive (TEMPORARY — removable, fully isolated)
 
@@ -246,5 +247,11 @@ Requested by **Hiten**: (a) the assigned consultant must state the time taken wh
 - **Types:** `InternalTask` gains `category?: string | null` and `time_minutes?: number | null`; new `TASK_CATEGORY_SUGGESTIONS` (Beneficiaries, Onboarding, Admin, Hearts Day, Escalations, Sponsors, Events, Finance, Reporting, Systems), `taskCategoryOptions(used)` (merges the seeds with values already in use, deduped case-insensitively — first spelling wins) and `fmtMinutes(mins)` (`90 → "1h 30m"`, null when nothing logged so callers can hide the field).
 - **Data layer:** `addTask` takes `category`; **`submitTask(id, minutes)`** writes `time_minutes`. On a **re-submit after a send-back the figure is OVERWRITTEN**, not accumulated — one task, one running total — and a call arriving without minutes never wipes an existing value.
 - **Frontend:** "Mark done" no longer submits directly — it opens a **close-out panel** (same shape as the existing Send-back panel) with Hours/Minutes boxes, a live `= 1h 30m` readout, a "minutes must be under 60" guard, pre-filled from the previous log on a resubmit, and a submit button disabled until the total is > 0. Applies to self-assigned tasks too (they auto-complete, so it's the last chance to capture it). Time shows on the `TaskCard`, in the detail chip row, next to the requester's Verify button ("X logged"), and on the completed line. The New-task modal gains a required **Related to** input (`<datalist>`-backed, sits beside Due date); the Assign button is gated on it. The Internal Tasks page gains a **work-stream filter** built from values in use. The Exco dashboard's tasks view gains a **Time logged** stat card, per-person logged totals on the workload meter, and a **Time logged per work-stream** breakdown (tasks with no category roll up as "Uncategorised").
+
+### 16.2 ManCo dashboard visibility (migration `0023`, shipped)
+
+Requested: the Dashboard's **Internal tasks** workload cards should be viewable by **ManCo**, not just Exco. Both layers were widened so the view is genuinely org-wide for ManCo:
+- **RLS (`0023`):** `p_it_read` relaxed from `my_role()='exco'` to `my_role() in ('exco','manco')` (plus the existing own/raised branch). Without this, a ManCo's `tasks` feed is RLS-scoped to their own tasks and the workload cards would be empty/partial. **Read only** — `p_it_insert/update/delete` are unchanged (ManCo still writes only their own + raised; Exco writes all).
+- **Frontend (`Dashboard.tsx`):** the tasks view gate changed from `isExco` to `canSeeTasks = role==='exco'||role==='manco'` (the pill button + the `effectiveView` fallback). **Scope kept deliberate:** only the Dashboard planning view goes org-wide for ManCo — the **Internal Tasks page** and **My Work** still filter to own+raised for them (their "see all" is still Exco-only), so ManCo get the overview without the personal workspaces changing.
 
 **Migration-history drift note:** the live DB also has `evt_*` (event/task board behind The Huddle — `evt_events`, `evt_tasks`, `evt_task_owners`, `evt_people`) and `office_*` tables that are **NOT** represented in `/supabase/migrations` (they were created directly). They back `Huddle.tsx`. Leave them alone when adding migrations; the Internal Tasks module is unrelated to `evt_tasks`.
